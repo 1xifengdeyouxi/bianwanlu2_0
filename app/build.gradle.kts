@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.roborazzi)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -22,7 +23,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -85,6 +86,13 @@ dependencies {
     implementation(libs.coil.kt)
     implementation(libs.kotlinx.serialization.json)
 
+    api(libs.androidx.compose.material.iconsExtended)
+    implementation(libs.hilt.android)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+    implementation(libs.androidx.lifecycle.viewModelCompose)
+    implementation(libs.androidx.hilt.lifecycle.viewModelCompose)
     ksp(libs.hilt.compiler)
     kspTest(libs.hilt.compiler)
 }
