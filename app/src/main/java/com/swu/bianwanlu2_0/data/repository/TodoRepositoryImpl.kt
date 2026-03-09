@@ -14,8 +14,14 @@ class TodoRepositoryImpl @Inject constructor(
     override fun getAllTodos(userId: Long): Flow<List<Todo>> =
         todoDao.getAllByUser(userId)
 
+    override fun getTodosByCategory(userId: Long, categoryId: Long): Flow<List<Todo>> =
+        todoDao.getByUserAndCategory(userId, categoryId)
+
     override fun countTodos(userId: Long): Flow<Int> =
         todoDao.countByUser(userId)
+
+    override fun countTodosByCategory(userId: Long, categoryId: Long): Flow<Int> =
+        todoDao.countByUserAndCategory(userId, categoryId)
 
     override fun getTodoById(id: Long): Flow<Todo?> =
         todoDao.getById(id)

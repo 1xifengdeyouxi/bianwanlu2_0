@@ -16,6 +16,9 @@ data class Todo(
 
     val description: String? = null,
 
+    @ColumnInfo(name = "category_id")
+    val categoryId: Long? = null,
+
     val status: TodoStatus = TodoStatus.ACTIVE,
 
     @ColumnInfo(name = "is_priority")
@@ -30,7 +33,6 @@ data class Todo(
     @ColumnInfo(name = "completed_at")
     val completedAt: Long? = null,
 
-    /** 预留用户 ID，登录功能完成后传入实际用户 ID */
     @ColumnInfo(name = "user_id")
     val userId: Long = GUEST_USER_ID
 )

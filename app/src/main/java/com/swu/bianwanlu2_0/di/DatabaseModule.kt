@@ -3,8 +3,11 @@ package com.swu.bianwanlu2_0.di
 import android.content.Context
 import androidx.room.Room
 import com.swu.bianwanlu2_0.data.local.AppDatabase
+import com.swu.bianwanlu2_0.data.local.dao.CategoryDao
 import com.swu.bianwanlu2_0.data.local.dao.NoteDao
 import com.swu.bianwanlu2_0.data.local.dao.TodoDao
+import com.swu.bianwanlu2_0.data.repository.CategoryRepository
+import com.swu.bianwanlu2_0.data.repository.CategoryRepositoryImpl
 import com.swu.bianwanlu2_0.data.repository.NoteRepository
 import com.swu.bianwanlu2_0.data.repository.NoteRepositoryImpl
 import com.swu.bianwanlu2_0.data.repository.TodoRepository
@@ -28,13 +31,19 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "bianwanlu.db"
-        ).build()
+        )
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .fallbackToDestructiveMigration()
+            .build()
 
     @Provides
     fun provideNoteDao(db: AppDatabase): NoteDao = db.noteDao()
 
     @Provides
     fun provideTodoDao(db: AppDatabase): TodoDao = db.todoDao()
+
+    @Provides
+    fun provideCategoryDao(db: AppDatabase): CategoryDao = db.categoryDao()
 }
 
 @Module
@@ -48,4 +57,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindTodoRepository(impl: TodoRepositoryImpl): TodoRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCategoryRepository(impl: CategoryRepositoryImpl): CategoryRepository
 }

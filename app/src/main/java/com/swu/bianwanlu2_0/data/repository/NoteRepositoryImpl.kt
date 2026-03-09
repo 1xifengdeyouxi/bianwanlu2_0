@@ -14,8 +14,14 @@ class NoteRepositoryImpl @Inject constructor(
     override fun getAllNotes(userId: Long): Flow<List<Note>> =
         noteDao.getAllByUser(userId)
 
+    override fun getNotesByCategory(userId: Long, categoryId: Long): Flow<List<Note>> =
+        noteDao.getByUserAndCategory(userId, categoryId)
+
     override fun countNotes(userId: Long): Flow<Int> =
         noteDao.countByUser(userId)
+
+    override fun countNotesByCategory(userId: Long, categoryId: Long): Flow<Int> =
+        noteDao.countByUserAndCategory(userId, categoryId)
 
     override fun getNoteById(id: Long): Flow<Note?> =
         noteDao.getById(id)

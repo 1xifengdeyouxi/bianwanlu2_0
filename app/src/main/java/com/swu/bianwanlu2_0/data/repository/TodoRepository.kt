@@ -5,7 +5,9 @@ import kotlinx.coroutines.flow.Flow
 
 interface TodoRepository {
     fun getAllTodos(userId: Long): Flow<List<Todo>>
+    fun getTodosByCategory(userId: Long, categoryId: Long): Flow<List<Todo>>
     fun countTodos(userId: Long): Flow<Int>
+    fun countTodosByCategory(userId: Long, categoryId: Long): Flow<Int>
     fun getTodoById(id: Long): Flow<Todo?>
     suspend fun insert(todo: Todo): Long
     suspend fun update(todo: Todo)

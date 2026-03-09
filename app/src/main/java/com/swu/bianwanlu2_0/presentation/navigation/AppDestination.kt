@@ -17,7 +17,7 @@ sealed class AppDestination(
 ) {
     data object Notes : AppDestination(
         route = "notes",
-        label = "放松签",
+        label = "笔记",
         icon = Icons.Outlined.StickyNote2
     )
 

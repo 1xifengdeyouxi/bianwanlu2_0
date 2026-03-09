@@ -24,8 +24,14 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE user_id = :userId ORDER BY updated_at DESC")
     fun getAllByUser(userId: Long): Flow<List<Note>>
 
+    @Query("SELECT * FROM notes WHERE user_id = :userId AND category_id = :categoryId ORDER BY updated_at DESC")
+    fun getByUserAndCategory(userId: Long, categoryId: Long): Flow<List<Note>>
+
     @Query("SELECT COUNT(*) FROM notes WHERE user_id = :userId")
     fun countByUser(userId: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM notes WHERE user_id = :userId AND category_id = :categoryId")
+    fun countByUserAndCategory(userId: Long, categoryId: Long): Flow<Int>
 
     @Query("SELECT * FROM notes WHERE id = :id LIMIT 1")
     fun getById(id: Long): Flow<Note?>

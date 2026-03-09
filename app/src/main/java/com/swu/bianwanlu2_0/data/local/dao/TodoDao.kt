@@ -24,8 +24,14 @@ interface TodoDao {
     @Query("SELECT * FROM todos WHERE user_id = :userId ORDER BY status ASC, updated_at DESC")
     fun getAllByUser(userId: Long): Flow<List<Todo>>
 
+    @Query("SELECT * FROM todos WHERE user_id = :userId AND category_id = :categoryId ORDER BY status ASC, updated_at DESC")
+    fun getByUserAndCategory(userId: Long, categoryId: Long): Flow<List<Todo>>
+
     @Query("SELECT COUNT(*) FROM todos WHERE user_id = :userId")
     fun countByUser(userId: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM todos WHERE user_id = :userId AND category_id = :categoryId")
+    fun countByUserAndCategory(userId: Long, categoryId: Long): Flow<Int>
 
     @Query("SELECT * FROM todos WHERE id = :id LIMIT 1")
     fun getById(id: Long): Flow<Todo?>
