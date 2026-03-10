@@ -24,14 +24,18 @@ import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
 import com.swu.bianwanlu2_0.presentation.components.AddCategoryDialog
+import com.swu.bianwanlu2_0.presentation.components.AppDrawerContent
 import com.swu.bianwanlu2_0.presentation.components.CategoryDropdown
 import com.swu.bianwanlu2_0.presentation.screens.calendar.CalendarScreen
 import com.swu.bianwanlu2_0.presentation.screens.category.CategoryManageScreen
@@ -58,12 +63,16 @@ import com.swu.bianwanlu2_0.presentation.screens.todo.TodoListScreen
 import com.swu.bianwanlu2_0.presentation.screens.todo.TodoViewModel
 import com.swu.bianwanlu2_0.ui.theme.Bianwanlu2_0Theme
 import com.swu.bianwanlu2_0.ui.theme.NavUnselected
+import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavHost(modifier: Modifier = Modifier) {
     var currentDestination by remember {
         mutableStateOf<AppDestination>(AppDestination.Notes)
     }
+
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     val noteViewModel: NoteViewModel = hiltViewModel()
     val todoViewModel: TodoViewModel = hiltViewModel()
@@ -122,71 +131,100 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         return
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            MainTopBar(
-                title = title,
-                itemCount = itemCount,
-                showArrow = hasCategoryDropdown,
-                isDropdownOpen = showCategoryDropdown,
-                onTitleClick = {
-                    if (hasCategoryDropdown) showCategoryDropdown = !showCategoryDropdown
-                },
-                onSearchClick = {},
-                onMenuClick = {}
-            )
-        },
-        bottomBar = {
-            BottomNavBar(
-                currentDestination = currentDestination,
-                onDestinationSelected = {
-                    if (it != currentDestination) showCategoryDropdown = false
-                    currentDestination = it
-                }
-            )
-        },
-        containerColor = Color.White
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            AnimatedContent(
-                targetState = currentDestination,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                modifier = Modifier.fillMaxSize(),
-                label = "screen_transition"
-            ) { destination ->
-                when (destination) {
-                    AppDestination.Notes -> NoteListScreen(viewModel = noteViewModel)
-                    AppDestination.Todo -> TodoListScreen(viewModel = todoViewModel)
-                    AppDestination.Timeline -> TimelineScreen()
-                    AppDestination.Calendar -> CalendarScreen()
-                }
-            }
-
-            if (hasCategoryDropdown) {
-                CategoryDropdown(
-                    visible = showCategoryDropdown,
-                    categories = categories,
-                    selectedCategory = selectedCategory,
-                    defaultLabel = defaultLabel,
-                    onSelect = { cat ->
-                        when (currentDestination) {
-                            AppDestination.Notes -> noteViewModel.selectCategory(cat)
-                            AppDestination.Todo -> todoViewModel.selectCategory(cat)
-                            else -> {}
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            AppDrawerContent(
+                noteCategories = noteCategories,
+                todoCategories = todoCategories,
+                selectedCategory = selectedCategory,
+                onCategorySelect = { cat ->
+                    when (cat.type) {
+                        CategoryType.NOTE -> {
+                            currentDestination = AppDestination.Notes
+                            noteViewModel.selectCategory(cat)
                         }
+                        CategoryType.TODO -> {
+                            currentDestination = AppDestination.Todo
+                            todoViewModel.selectCategory(cat)
+                        }
+                    }
+                    scope.launch { drawerState.close() }
+                },
+                onMyClick = { scope.launch { drawerState.close() } },
+                onSyncClick = { scope.launch { drawerState.close() } },
+                onGameClick = { scope.launch { drawerState.close() } }
+            )
+        },
+        gesturesEnabled = true
+    ) {
+        Scaffold(
+            modifier = modifier,
+            topBar = {
+                MainTopBar(
+                    title = title,
+                    itemCount = itemCount,
+                    showArrow = hasCategoryDropdown,
+                    isDropdownOpen = showCategoryDropdown,
+                    onTitleClick = {
+                        if (hasCategoryDropdown) showCategoryDropdown = !showCategoryDropdown
                     },
-                    onDismiss = { showCategoryDropdown = false },
-                    onAddCategory = { showAddCategoryDialog = true },
-                    onManageCategory = { showCategoryManage = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .zIndex(10f)
+                    onAvatarClick = { scope.launch { drawerState.open() } },
+                    onSearchClick = {},
+                    onMenuClick = {}
                 )
+            },
+            bottomBar = {
+                BottomNavBar(
+                    currentDestination = currentDestination,
+                    onDestinationSelected = {
+                        if (it != currentDestination) showCategoryDropdown = false
+                        currentDestination = it
+                    }
+                )
+            },
+            containerColor = Color.White
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                AnimatedContent(
+                    targetState = currentDestination,
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "screen_transition"
+                ) { destination ->
+                    when (destination) {
+                        AppDestination.Notes -> NoteListScreen(viewModel = noteViewModel)
+                        AppDestination.Todo -> TodoListScreen(viewModel = todoViewModel)
+                        AppDestination.Timeline -> TimelineScreen()
+                        AppDestination.Calendar -> CalendarScreen()
+                    }
+                }
+
+                if (hasCategoryDropdown) {
+                    CategoryDropdown(
+                        visible = showCategoryDropdown,
+                        categories = categories,
+                        selectedCategory = selectedCategory,
+                        defaultLabel = defaultLabel,
+                        onSelect = { cat ->
+                            when (currentDestination) {
+                                AppDestination.Notes -> noteViewModel.selectCategory(cat)
+                                AppDestination.Todo -> todoViewModel.selectCategory(cat)
+                                else -> {}
+                            }
+                        },
+                        onDismiss = { showCategoryDropdown = false },
+                        onAddCategory = { showAddCategoryDialog = true },
+                        onManageCategory = { showCategoryManage = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(10f)
+                    )
+                }
             }
         }
     }
@@ -215,6 +253,7 @@ private fun MainTopBar(
     showArrow: Boolean,
     isDropdownOpen: Boolean,
     onTitleClick: () -> Unit,
+    onAvatarClick: () -> Unit,
     onSearchClick: () -> Unit,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -227,6 +266,7 @@ private fun MainTopBar(
             .padding(horizontal = 4.dp)
     ) {
         AvatarButton(
+            onClick = onAvatarClick,
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .padding(start = 8.dp)
@@ -281,7 +321,7 @@ private fun MainTopBar(
 }
 
 @Composable
-private fun AvatarButton(modifier: Modifier = Modifier) {
+private fun AvatarButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
@@ -289,6 +329,7 @@ private fun AvatarButton(modifier: Modifier = Modifier) {
             .clip(CircleShape)
             .border(1.dp, Color(0xFFE0E0E0), CircleShape)
             .background(Color(0xFFF5F5F5))
+            .clickable(onClick = onClick)
     ) {
         Icon(
             Icons.Outlined.Person,
@@ -306,7 +347,8 @@ private fun MainTopBarPreview() {
         MainTopBar(
             title = "笔记", itemCount = 3,
             showArrow = true, isDropdownOpen = false,
-            onTitleClick = {}, onSearchClick = {}, onMenuClick = {}
+            onTitleClick = {}, onAvatarClick = {},
+            onSearchClick = {}, onMenuClick = {}
         )
     }
 }
