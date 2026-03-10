@@ -17,6 +17,21 @@ class TodoRepositoryImpl @Inject constructor(
     override fun getTodosByCategory(userId: Long, categoryId: Long): Flow<List<Todo>> =
         todoDao.getByUserAndCategory(userId, categoryId)
 
+    override fun getActiveTodos(userId: Long): Flow<List<Todo>> =
+        todoDao.getActiveByUser(userId)
+
+    override fun getExpiredTodos(userId: Long, now: Long): Flow<List<Todo>> =
+        todoDao.getExpiredByUser(userId, now)
+
+    override fun getTodayTodos(userId: Long, dayStart: Long, dayEnd: Long): Flow<List<Todo>> =
+        todoDao.getTodayByUser(userId, dayStart, dayEnd)
+
+    override fun getTodosByDateRange(userId: Long, start: Long, end: Long): Flow<List<Todo>> =
+        todoDao.getByDateRange(userId, start, end)
+
+    override fun getPriorityTodos(userId: Long): Flow<List<Todo>> =
+        todoDao.getPriorityByUser(userId)
+
     override fun countTodos(userId: Long): Flow<Int> =
         todoDao.countByUser(userId)
 

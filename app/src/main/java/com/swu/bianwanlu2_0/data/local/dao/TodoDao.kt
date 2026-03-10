@@ -21,11 +21,26 @@ interface TodoDao {
     @Delete
     suspend fun delete(todo: Todo)
 
-    @Query("SELECT * FROM todos WHERE user_id = :userId ORDER BY status ASC, updated_at DESC")
+    @Query("SELECT * FROM todos WHERE user_id = :userId ORDER BY is_priority DESC, updated_at DESC")
     fun getAllByUser(userId: Long): Flow<List<Todo>>
 
-    @Query("SELECT * FROM todos WHERE user_id = :userId AND category_id = :categoryId ORDER BY status ASC, updated_at DESC")
+    @Query("SELECT * FROM todos WHERE user_id = :userId AND category_id = :categoryId ORDER BY is_priority DESC, updated_at DESC")
     fun getByUserAndCategory(userId: Long, categoryId: Long): Flow<List<Todo>>
+
+    @Query("SELECT * FROM todos WHERE user_id = :userId AND status = 0 ORDER BY is_priority DESC, updated_at DESC")
+    fun getActiveByUser(userId: Long): Flow<List<Todo>>
+
+    @Query("SELECT * FROM todos WHERE user_id = :userId AND status = 0 AND reminder_time IS NOT NULL AND reminder_time < :now ORDER BY updated_at DESC")
+    fun getExpiredByUser(userId: Long, now: Long): Flow<List<Todo>>
+
+    @Query("SELECT * FROM todos WHERE user_id = :userId AND reminder_time BETWEEN :dayStart AND :dayEnd ORDER BY is_priority DESC, reminder_time ASC")
+    fun getTodayByUser(userId: Long, dayStart: Long, dayEnd: Long): Flow<List<Todo>>
+
+    @Query("SELECT * FROM todos WHERE user_id = :userId AND reminder_time BETWEEN :start AND :end ORDER BY is_priority DESC, reminder_time ASC")
+    fun getByDateRange(userId: Long, start: Long, end: Long): Flow<List<Todo>>
+
+    @Query("SELECT * FROM todos WHERE user_id = :userId AND is_priority = 1 ORDER BY updated_at DESC")
+    fun getPriorityByUser(userId: Long): Flow<List<Todo>>
 
     @Query("SELECT COUNT(*) FROM todos WHERE user_id = :userId")
     fun countByUser(userId: Long): Flow<Int>

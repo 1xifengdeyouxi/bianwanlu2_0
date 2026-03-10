@@ -59,6 +59,7 @@ import com.swu.bianwanlu2_0.presentation.screens.category.CategoryViewModel
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteListScreen
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteViewModel
 import com.swu.bianwanlu2_0.presentation.screens.timeline.TimelineScreen
+import com.swu.bianwanlu2_0.presentation.screens.todo.AddTodoScreen
 import com.swu.bianwanlu2_0.presentation.screens.todo.TodoListScreen
 import com.swu.bianwanlu2_0.presentation.screens.todo.TodoViewModel
 import com.swu.bianwanlu2_0.ui.theme.Bianwanlu2_0Theme
@@ -121,6 +122,19 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     var showCategoryDropdown by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showCategoryManage by remember { mutableStateOf(false) }
+    var showAddTodo by remember { mutableStateOf(false) }
+
+    // 新建待办全屏页面
+    if (showAddTodo) {
+        AddTodoScreen(
+            onCancel = { showAddTodo = false },
+            onConfirm = { todoTitle, reminderTime, isPriority, cardColor ->
+                todoViewModel.addTodo(todoTitle, reminderTime, isPriority, cardColor)
+                showAddTodo = false
+            }
+        )
+        return
+    }
 
     // 分类管理全屏页面
     if (showCategoryManage) {
@@ -198,7 +212,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 ) { destination ->
                     when (destination) {
                         AppDestination.Notes -> NoteListScreen(viewModel = noteViewModel)
-                        AppDestination.Todo -> TodoListScreen(viewModel = todoViewModel)
+                        AppDestination.Todo -> TodoListScreen(
+                            viewModel = todoViewModel,
+                            onAddTodo = { showAddTodo = true }
+                        )
                         AppDestination.Timeline -> TimelineScreen()
                         AppDestination.Calendar -> CalendarScreen()
                     }
