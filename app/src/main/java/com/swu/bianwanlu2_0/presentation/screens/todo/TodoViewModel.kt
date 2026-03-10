@@ -145,6 +145,27 @@ class TodoViewModel @Inject constructor(
         }
     }
 
+    fun updateTodo(
+        todo: Todo,
+        title: String,
+        reminderTime: Long?,
+        isPriority: Boolean,
+        cardColor: Long
+    ) {
+        if (title.isBlank()) return
+        viewModelScope.launch {
+            todoRepository.update(
+                todo.copy(
+                    title = title.trim(),
+                    reminderTime = reminderTime,
+                    isPriority = isPriority,
+                    cardColor = cardColor,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
     fun deleteTodo(todo: Todo) {
         viewModelScope.launch {
             todoRepository.delete(todo)

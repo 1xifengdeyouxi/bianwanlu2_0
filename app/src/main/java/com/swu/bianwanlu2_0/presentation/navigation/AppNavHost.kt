@@ -59,6 +59,7 @@ import com.swu.bianwanlu2_0.presentation.screens.category.CategoryViewModel
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteListScreen
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteViewModel
 import com.swu.bianwanlu2_0.presentation.screens.timeline.TimelineScreen
+import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.presentation.screens.todo.AddTodoScreen
 import com.swu.bianwanlu2_0.presentation.screens.todo.TodoListScreen
 import com.swu.bianwanlu2_0.presentation.screens.todo.TodoViewModel
@@ -123,6 +124,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showCategoryManage by remember { mutableStateOf(false) }
     var showAddTodo by remember { mutableStateOf(false) }
+    var editingTodo by remember { mutableStateOf<Todo?>(null) }
 
     // 新建待办全屏页面
     if (showAddTodo) {
@@ -131,6 +133,20 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             onConfirm = { todoTitle, reminderTime, isPriority, cardColor ->
                 todoViewModel.addTodo(todoTitle, reminderTime, isPriority, cardColor)
                 showAddTodo = false
+            }
+        )
+        return
+    }
+
+    // 编辑待办全屏页面
+    if (editingTodo != null) {
+        val todo = editingTodo!!
+        AddTodoScreen(
+            existingTodo = todo,
+            onCancel = { editingTodo = null },
+            onConfirm = { todoTitle, reminderTime, isPriority, cardColor ->
+                todoViewModel.updateTodo(todo, todoTitle, reminderTime, isPriority, cardColor)
+                editingTodo = null
             }
         )
         return
@@ -214,7 +230,8 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                         AppDestination.Notes -> NoteListScreen(viewModel = noteViewModel)
                         AppDestination.Todo -> TodoListScreen(
                             viewModel = todoViewModel,
-                            onAddTodo = { showAddTodo = true }
+                            onAddTodo = { showAddTodo = true },
+                            onEditTodo = { editingTodo = it }
                         )
                         AppDestination.Timeline -> TimelineScreen()
                         AppDestination.Calendar -> CalendarScreen()

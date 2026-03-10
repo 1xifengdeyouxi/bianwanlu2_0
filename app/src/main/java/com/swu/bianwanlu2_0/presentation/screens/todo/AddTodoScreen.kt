@@ -38,13 +38,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.presentation.components.ReminderDialog
 import com.swu.bianwanlu2_0.ui.theme.NoteRed
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-private val cardColorOptions = listOf(
+val cardColorOptions = listOf(
     0xFFFFF8E1L, // 淡黄 (默认)
     0xFFFCE4ECL, // 淡粉
     0xFFE8F5E9L, // 淡绿
@@ -59,14 +63,17 @@ private val cardColorOptions = listOf(
 fun AddTodoScreen(
     onCancel: () -> Unit,
     onConfirm: (title: String, reminderTime: Long?, isPriority: Boolean, cardColor: Long) -> Unit,
+    existingTodo: Todo? = null,
     modifier: Modifier = Modifier
 ) {
-    var title by remember { mutableStateOf("") }
-    var reminderTime by remember { mutableStateOf<Long?>(null) }
-    var isPriority by remember { mutableStateOf(false) }
-    var cardColor by remember { mutableLongStateOf(Todo.DEFAULT_CARD_COLOR) }
+    var title by remember { mutableStateOf(existingTodo?.title ?: "") }
+    var reminderTime by remember { mutableStateOf(existingTodo?.reminderTime) }
+    var isPriority by remember { mutableStateOf(existingTodo?.isPriority ?: false) }
+    var cardColor by remember { mutableLongStateOf(existingTodo?.cardColor ?: Todo.DEFAULT_CARD_COLOR) }
     var showReminderDialog by remember { mutableStateOf(false) }
     var showColorPicker by remember { mutableStateOf(false) }
+
+    val isEditMode = existingTodo != null
 
     Column(
         modifier = modifier
@@ -74,8 +81,8 @@ fun AddTodoScreen(
             .background(Color(0xFFF5F5F5))
             .statusBarsPadding()
     ) {
-        // TopBar
         AddTodoTopBar(
+            titleText = if (isEditMode) "编辑" else "新建",
             onCancel = onCancel,
             onConfirm = {
                 if (title.isNotBlank()) {
@@ -87,7 +94,6 @@ fun AddTodoScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 输入卡片
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -123,14 +129,22 @@ fun AddTodoScreen(
                     }
                 )
 
+                // 已设置的提醒时间提示
+                if (reminderTime != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "提醒: ${formatReminderTime(reminderTime!!)}",
+                        fontSize = 12.sp,
+                        color = Color(0xFF9E9E9E)
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // 底部三个按钮
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // 日历/提醒按钮
                     Icon(
                         imageVector = Icons.Outlined.CalendarMonth,
                         contentDescription = "设置提醒",
@@ -143,7 +157,6 @@ fun AddTodoScreen(
                             ) { showReminderDialog = true }
                     )
 
-                    // 优先级旗帜按钮
                     Icon(
                         imageVector = Icons.Outlined.Flag,
                         contentDescription = "设置优先级",
@@ -156,13 +169,13 @@ fun AddTodoScreen(
                             ) { isPriority = !isPriority }
                     )
 
-                    // 颜色选择按钮
+                    // 颜色圆圈跟随当前卡片颜色
                     Box(
                         modifier = Modifier
                             .size(24.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFFFC107))
-                            .border(1.5.dp, Color(0xFFE0E0E0), CircleShape)
+                            .background(Color(cardColor))
+                            .border(1.5.dp, Color(0xFFBDBDBD), CircleShape)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -172,7 +185,6 @@ fun AddTodoScreen(
             }
         }
 
-        // 颜色选择器
         if (showColorPicker) {
             Spacer(modifier = Modifier.height(12.dp))
             ColorPickerRow(
@@ -199,6 +211,7 @@ fun AddTodoScreen(
 
 @Composable
 private fun AddTodoTopBar(
+    titleText: String,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
     confirmEnabled: Boolean
@@ -221,12 +234,12 @@ private fun AddTodoTopBar(
         )
 
         Text(
-            text = "新建",
+            text = titleText,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF212121),
             modifier = Modifier.weight(1f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = TextAlign.Center
         )
 
         Text(
@@ -271,4 +284,9 @@ private fun ColorPickerRow(
             )
         }
     }
+}
+
+private fun formatReminderTime(timestamp: Long): String {
+    val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
+    return sdf.format(Date(timestamp))
 }

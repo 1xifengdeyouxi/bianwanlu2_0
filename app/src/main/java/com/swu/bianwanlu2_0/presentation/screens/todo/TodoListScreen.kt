@@ -61,11 +61,16 @@ import com.swu.bianwanlu2_0.data.local.entity.TodoStatus
 import com.swu.bianwanlu2_0.ui.theme.EmptyIconColor
 import com.swu.bianwanlu2_0.ui.theme.EmptyTextColor
 import com.swu.bianwanlu2_0.ui.theme.NoteRed
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun TodoListScreen(
     viewModel: TodoViewModel,
     onAddTodo: () -> Unit,
+    onEditTodo: (Todo) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val activeTodos by viewModel.activeTodos.collectAsStateWithLifecycle()
@@ -80,15 +85,18 @@ fun TodoListScreen(
             )
 
             if (activeTodos.isEmpty() && completedTodos.isEmpty()) {
-                TodoEmptyState(modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth())
+                TodoEmptyState(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
             } else {
                 TodoContent(
                     activeTodos = activeTodos,
                     completedTodos = completedTodos,
                     onToggle = viewModel::toggleComplete,
                     onDelete = viewModel::deleteTodo,
+                    onEdit = onEditTodo,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -143,9 +151,7 @@ private fun FilterChip(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(
-                if (isSelected) Color(0xFFF5F5F5) else Color.Transparent
-            )
+            .background(if (isSelected) Color(0xFFF5F5F5) else Color.Transparent)
             .then(
                 if (!isSelected) Modifier.border(1.dp, Color(0xFFE0E0E0), RoundedCornerShape(20.dp))
                 else Modifier
@@ -168,6 +174,7 @@ private fun TodoContent(
     completedTodos: List<Todo>,
     onToggle: (Todo) -> Unit,
     onDelete: (Todo) -> Unit,
+    onEdit: (Todo) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var completedExpanded by remember { mutableStateOf(true) }
@@ -179,16 +186,15 @@ private fun TodoContent(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(vertical = 8.dp)
     ) {
-        // 进行中的待办
         items(activeTodos, key = { "a_${it.id}" }) { todo ->
             SwipeToDeleteTodoItem(
                 todo = todo,
                 onToggle = { onToggle(todo) },
-                onDelete = { onDelete(todo) }
+                onDelete = { onDelete(todo) },
+                onEdit = { onEdit(todo) }
             )
         }
 
-        // 已完成分割栏
         if (completedTodos.isNotEmpty()) {
             item(key = "completed_header") {
                 Spacer(modifier = Modifier.height(4.dp))
@@ -204,7 +210,8 @@ private fun TodoContent(
                     SwipeToDeleteTodoItem(
                         todo = todo,
                         onToggle = { onToggle(todo) },
-                        onDelete = { onDelete(todo) }
+                        onDelete = { onDelete(todo) },
+                        onEdit = { onEdit(todo) }
                     )
                 }
             }
@@ -255,7 +262,8 @@ private fun CompletedSectionHeader(
 private fun SwipeToDeleteTodoItem(
     todo: Todo,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEdit: () -> Unit
 ) {
     val dismissState = rememberSwipeToDismissBoxState()
 
@@ -289,7 +297,7 @@ private fun SwipeToDeleteTodoItem(
         },
         enableDismissFromStartToEnd = false
     ) {
-        TodoCard(todo = todo, onToggle = onToggle)
+        TodoCard(todo = todo, onToggle = onToggle, onEdit = onEdit)
     }
 }
 
@@ -297,13 +305,18 @@ private fun SwipeToDeleteTodoItem(
 private fun TodoCard(
     todo: Todo,
     onToggle: () -> Unit,
+    onEdit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isCompleted = todo.status == TodoStatus.COMPLETED
     val bgColor = if (isCompleted) Color(0xFFF0F0F0) else Color(todo.cardColor)
+    val now = System.currentTimeMillis()
+    val isExpired = todo.reminderTime != null && todo.reminderTime < now && !isCompleted
 
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onEdit),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = bgColor),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isCompleted) 0.dp else 1.dp)
@@ -316,7 +329,7 @@ private fun TodoCard(
             Box(
                 modifier = Modifier
                     .width(4.dp)
-                    .height(40.dp)
+                    .height(if (todo.reminderTime != null) 48.dp else 40.dp)
                     .background(
                         color = if (isCompleted) Color(0xFFBDBDBD)
                         else if (todo.isPriority) NoteRed
@@ -327,7 +340,7 @@ private fun TodoCard(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // 标题+描述
+            // 标题 + 提醒时间
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = todo.title,
@@ -338,6 +351,15 @@ private fun TodoCard(
                     color = if (isCompleted) Color(0xFFBDBDBD) else Color(0xFF212121),
                     textDecoration = if (isCompleted) TextDecoration.LineThrough else TextDecoration.None
                 )
+                // 显示提醒时间
+                if (todo.reminderTime != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = formatReminderDisplay(todo.reminderTime, isExpired),
+                        fontSize = 12.sp,
+                        color = if (isExpired) NoteRed else Color(0xFF9E9E9E)
+                    )
+                }
             }
 
             // 优先级标记
@@ -346,14 +368,12 @@ private fun TodoCard(
                     imageVector = Icons.Outlined.Flag,
                     contentDescription = "高优先级",
                     tint = NoteRed,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .padding(end = 2.dp)
+                    modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
-            // 右侧圆形勾选
+            // 右侧圆形勾选 - 只有这里响应完成操作
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
@@ -407,5 +427,36 @@ private fun TodoEmptyState(modifier: Modifier = Modifier) {
             lineHeight = 22.sp,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+/**
+ * 格式化提醒时间的显示：
+ * 今天 -> "今天 HH:mm" + 过期标记
+ * 明天 -> "明天 HH:mm"
+ * 其他 -> "M/dd HH:mm"
+ */
+private fun formatReminderDisplay(reminderTime: Long, isExpired: Boolean): String {
+    val reminderCal = Calendar.getInstance().apply { timeInMillis = reminderTime }
+    val nowCal = Calendar.getInstance()
+
+    val isToday = reminderCal.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) &&
+            reminderCal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)
+
+    val tomorrowCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }
+    val isTomorrow = reminderCal.get(Calendar.YEAR) == tomorrowCal.get(Calendar.YEAR) &&
+            reminderCal.get(Calendar.DAY_OF_YEAR) == tomorrowCal.get(Calendar.DAY_OF_YEAR)
+
+    val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val timeStr = timeFmt.format(Date(reminderTime))
+
+    return when {
+        isToday && isExpired -> "今天 $timeStr 已过期"
+        isToday -> "今天 $timeStr"
+        isTomorrow -> "明天 $timeStr"
+        else -> {
+            val dateFmt = SimpleDateFormat("M/dd HH:mm", Locale.getDefault())
+            dateFmt.format(Date(reminderTime))
+        }
     }
 }
