@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Schedule
@@ -54,6 +55,7 @@ import androidx.compose.ui.window.Dialog
 import java.util.Calendar
 
 private const val CUSTOM_MARKER = -1L
+private const val CLEAR_MARKER = -2L
 
 data class ReminderOption(
     val label: String,
@@ -65,9 +67,11 @@ data class ReminderOption(
 @Composable
 fun ReminderDialog(
     onDismiss: () -> Unit,
-    onSelect: (Long) -> Unit
+    onSelect: (Long) -> Unit,
+    showClearAction: Boolean = false,
+    onClear: (() -> Unit)? = null
 ) {
-    val options = remember { buildReminderOptions() }
+    val options = remember(showClearAction) { buildReminderOptions(showClearAction) }
     var showCustomPicker by remember { mutableStateOf(false) }
 
     if (showCustomPicker) {
@@ -113,10 +117,13 @@ fun ReminderDialog(
                             option = option,
                             onClick = {
                                 val time = option.getTime()
-                                if (time == CUSTOM_MARKER) {
-                                    showCustomPicker = true
-                                } else {
-                                    onSelect(time)
+                                when (time) {
+                                    CUSTOM_MARKER -> showCustomPicker = true
+                                    CLEAR_MARKER -> {
+                                        onClear?.invoke()
+                                        onDismiss()
+                                    }
+                                    else -> onSelect(time)
                                 }
                             }
                         )
@@ -258,8 +265,8 @@ private fun ReminderOptionItem(
     }
 }
 
-private fun buildReminderOptions(): List<ReminderOption> {
-    return listOf(
+private fun buildReminderOptions(showClearAction: Boolean): List<ReminderOption> {
+    val base = mutableListOf(
         ReminderOption("30分钟", Icons.Outlined.Schedule, Color(0xFFE53935)) {
             System.currentTimeMillis() + 30 * 60 * 1000L
         },
@@ -299,4 +306,14 @@ private fun buildReminderOptions(): List<ReminderOption> {
             CUSTOM_MARKER
         }
     )
+
+    if (showClearAction) {
+        base.add(
+            ReminderOption("取消提醒", Icons.Outlined.Close, Color(0xFF9E9E9E)) {
+                CLEAR_MARKER
+            }
+        )
+    }
+
+    return base
 }

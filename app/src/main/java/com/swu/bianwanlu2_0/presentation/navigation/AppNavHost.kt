@@ -56,9 +56,11 @@ import com.swu.bianwanlu2_0.presentation.components.CategoryDropdown
 import com.swu.bianwanlu2_0.presentation.screens.calendar.CalendarScreen
 import com.swu.bianwanlu2_0.presentation.screens.category.CategoryManageScreen
 import com.swu.bianwanlu2_0.presentation.screens.category.CategoryViewModel
+import com.swu.bianwanlu2_0.presentation.screens.notes.AddNoteScreen
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteListScreen
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteViewModel
 import com.swu.bianwanlu2_0.presentation.screens.timeline.TimelineScreen
+import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.presentation.screens.todo.AddTodoScreen
 import com.swu.bianwanlu2_0.presentation.screens.todo.TodoListScreen
@@ -123,8 +125,53 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     var showCategoryDropdown by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showCategoryManage by remember { mutableStateOf(false) }
+    var showAddNote by remember { mutableStateOf(false) }
+    var editingNote by remember { mutableStateOf<Note?>(null) }
     var showAddTodo by remember { mutableStateOf(false) }
     var editingTodo by remember { mutableStateOf<Todo?>(null) }
+
+    // 新建笔记全屏页面
+    if (showAddNote) {
+        AddNoteScreen(
+            onCancel = { showAddNote = false },
+            onConfirm = { noteTitle, noteContent, reminderTime, isPriority, cardColor, textColor, imageUris ->
+                noteViewModel.addNote(
+                    title = noteTitle,
+                    content = noteContent,
+                    reminderTime = reminderTime,
+                    isPriority = isPriority,
+                    cardColor = cardColor,
+                    textColor = textColor,
+                    imageUris = imageUris
+                )
+                showAddNote = false
+            }
+        )
+        return
+    }
+
+    // 编辑笔记全屏页面
+    if (editingNote != null) {
+        val note = editingNote!!
+        AddNoteScreen(
+            existingNote = note,
+            onCancel = { editingNote = null },
+            onConfirm = { noteTitle, noteContent, reminderTime, isPriority, cardColor, textColor, imageUris ->
+                noteViewModel.updateNote(
+                    existing = note,
+                    title = noteTitle,
+                    content = noteContent,
+                    reminderTime = reminderTime,
+                    isPriority = isPriority,
+                    cardColor = cardColor,
+                    textColor = textColor,
+                    imageUris = imageUris
+                )
+                editingNote = null
+            }
+        )
+        return
+    }
 
     // 新建待办全屏页面
     if (showAddTodo) {
@@ -227,7 +274,11 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     label = "screen_transition"
                 ) { destination ->
                     when (destination) {
-                        AppDestination.Notes -> NoteListScreen(viewModel = noteViewModel)
+                        AppDestination.Notes -> NoteListScreen(
+                            viewModel = noteViewModel,
+                            onAddNote = { showAddNote = true },
+                            onEditNote = { editingNote = it }
+                        )
                         AppDestination.Todo -> TodoListScreen(
                             viewModel = todoViewModel,
                             onAddTodo = { showAddTodo = true },

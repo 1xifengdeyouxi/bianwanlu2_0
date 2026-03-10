@@ -202,7 +202,12 @@ fun AddTodoScreen(
         ReminderDialog(
             onDismiss = { showReminderDialog = false },
             onSelect = { time ->
-                if (time > 0) reminderTime = time
+                reminderTime = time
+                showReminderDialog = false
+            },
+            showClearAction = reminderTime != null,
+            onClear = {
+                reminderTime = null
                 showReminderDialog = false
             }
         )

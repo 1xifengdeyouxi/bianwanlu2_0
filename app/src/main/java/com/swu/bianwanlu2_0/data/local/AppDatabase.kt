@@ -15,7 +15,7 @@ import com.swu.bianwanlu2_0.data.local.entity.Todo
 
 @Database(
     entities = [Note::class, Todo::class, Category::class],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -51,6 +51,20 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE todos ADD COLUMN reminder_time INTEGER DEFAULT NULL")
                 db.execSQL("ALTER TABLE todos ADD COLUMN card_color INTEGER NOT NULL DEFAULT ${0xFFFFF8E1L}")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN text_color INTEGER NOT NULL DEFAULT ${Note.DEFAULT_TEXT_COLOR}")
+                db.execSQL("ALTER TABLE notes ADD COLUMN image_uris TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN reminder_time INTEGER DEFAULT NULL")
+                db.execSQL("ALTER TABLE notes ADD COLUMN card_color INTEGER NOT NULL DEFAULT ${Note.DEFAULT_CARD_COLOR}")
             }
         }
     }
