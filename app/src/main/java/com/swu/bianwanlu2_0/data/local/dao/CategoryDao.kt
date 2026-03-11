@@ -33,4 +33,13 @@ interface CategoryDao {
 
     @Query("SELECT COUNT(*) FROM todos WHERE category_id = :categoryId")
     fun countTodosByCategory(categoryId: Long): Flow<Int>
+
+    @Query("SELECT COALESCE(MAX(sort_order), -1) FROM categories WHERE user_id = :userId AND type = :type")
+    suspend fun getMaxSortOrder(userId: Long, type: CategoryType): Int
+
+    @Query("SELECT COUNT(*) FROM categories WHERE user_id = :userId AND type = :type")
+    suspend fun countByUserAndType(userId: Long, type: CategoryType): Int
+
+    @Query("SELECT * FROM categories WHERE user_id = :userId AND type = :type ORDER BY sort_order ASC LIMIT 1")
+    suspend fun getFirstByUserAndType(userId: Long, type: CategoryType): Category?
 }

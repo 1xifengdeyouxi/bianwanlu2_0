@@ -41,8 +41,7 @@ fun CategoryDropdown(
     visible: Boolean,
     categories: List<Category>,
     selectedCategory: Category?,
-    defaultLabel: String,
-    onSelect: (Category?) -> Unit,
+    onSelect: (Category) -> Unit,
     onDismiss: () -> Unit,
     onAddCategory: () -> Unit,
     onManageCategory: () -> Unit,
@@ -62,15 +61,6 @@ fun CategoryDropdown(
             color = Color.White
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                CategoryItem(
-                    name = defaultLabel,
-                    isSelected = selectedCategory == null,
-                    onClick = {
-                        onSelect(null)
-                        onDismiss()
-                    }
-                )
-
                 categories.forEach { category ->
                     CategoryItem(
                         name = category.name,

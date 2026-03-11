@@ -1,9 +1,9 @@
 package com.swu.bianwanlu2_0.presentation.screens.notes
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,20 +22,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,10 +43,12 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swu.bianwanlu2_0.R
 import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.data.local.entity.NoteStatus
+import com.swu.bianwanlu2_0.presentation.components.SwipeRevealDeleteItem
 import com.swu.bianwanlu2_0.ui.theme.EmptyIconColor
 import com.swu.bianwanlu2_0.ui.theme.EmptyTextColor
 import com.swu.bianwanlu2_0.ui.theme.NoteRed
@@ -68,8 +67,21 @@ fun NoteListScreen(
     val activeNotes by viewModel.activeNotes.collectAsStateWithLifecycle()
     val completedNotes by viewModel.completedNotes.collectAsStateWithLifecycle()
     val currentFilter by viewModel.currentFilter.collectAsStateWithLifecycle()
+    var openedNoteId by remember { mutableStateOf<Long?>(null) }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {
+                    if (openedNoteId != null) {
+                        openedNoteId = null
+                    }
+                }
+            )
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             NoteFilterTabRow(
                 currentFilter = currentFilter,
@@ -86,6 +98,8 @@ fun NoteListScreen(
                 NoteContent(
                     activeNotes = activeNotes,
                     completedNotes = completedNotes,
+                    openedNoteId = openedNoteId,
+                    onOpenedNoteChange = { openedNoteId = it },
                     onToggle = viewModel::toggleComplete,
                     onDelete = viewModel::deleteNote,
                     onEdit = onEditNote,
@@ -166,6 +180,8 @@ private fun FilterChip(
 private fun NoteContent(
     activeNotes: List<Note>,
     completedNotes: List<Note>,
+    openedNoteId: Long?,
+    onOpenedNoteChange: (Long?) -> Unit,
     onToggle: (Note) -> Unit,
     onDelete: (Note) -> Unit,
     onEdit: (Note) -> Unit,
@@ -181,6 +197,10 @@ private fun NoteContent(
         items(activeNotes, key = { "a_${it.id}" }) { note ->
             SwipeNoteItem(
                 note = note,
+                hasAnyRevealed = openedNoteId != null,
+                isRevealed = openedNoteId == note.id,
+                onRevealedChange = { revealed -> onOpenedNoteChange(if (revealed) note.id else null) },
+                onCloseRequested = { onOpenedNoteChange(null) },
                 onToggle = { onToggle(note) },
                 onDelete = { onDelete(note) },
                 onEdit = { onEdit(note) }
@@ -189,6 +209,10 @@ private fun NoteContent(
         items(completedNotes, key = { "c_${it.id}" }) { note ->
             SwipeNoteItem(
                 note = note,
+                hasAnyRevealed = openedNoteId != null,
+                isRevealed = openedNoteId == note.id,
+                onRevealedChange = { revealed -> onOpenedNoteChange(if (revealed) note.id else null) },
+                onCloseRequested = { onOpenedNoteChange(null) },
                 onToggle = { onToggle(note) },
                 onDelete = { onDelete(note) },
                 onEdit = { onEdit(note) }
@@ -200,55 +224,33 @@ private fun NoteContent(
 @Composable
 private fun SwipeNoteItem(
     note: Note,
+    hasAnyRevealed: Boolean,
+    isRevealed: Boolean,
+    onRevealedChange: (Boolean) -> Unit,
+    onCloseRequested: () -> Unit,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit
 ) {
-    val dismissState = rememberSwipeToDismissBoxState()
-
-    LaunchedEffect(dismissState.currentValue) {
-        when (dismissState.currentValue) {
-            SwipeToDismissBoxValue.StartToEnd -> onToggle()
-            SwipeToDismissBoxValue.EndToStart -> onDelete()
-            SwipeToDismissBoxValue.Settled -> Unit
-        }
-    }
-
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            val targetColor = when (dismissState.targetValue) {
-                SwipeToDismissBoxValue.StartToEnd -> Color(0xFF66BB6A)
-                SwipeToDismissBoxValue.EndToStart -> NoteRed
-                SwipeToDismissBoxValue.Settled -> Color.Transparent
-            }
-            val color by animateColorAsState(targetColor, label = "swipe_bg")
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(color, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 18.dp),
-                contentAlignment = when (dismissState.targetValue) {
-                    SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
-                    SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
-                    SwipeToDismissBoxValue.Settled -> Alignment.Center
-                }
-            ) {
-                when (dismissState.targetValue) {
-                    SwipeToDismissBoxValue.StartToEnd -> {
-                        Icon(Icons.Default.Check, contentDescription = "完成", tint = Color.White)
-                    }
-                    SwipeToDismissBoxValue.EndToStart -> {
-                        Icon(Icons.Default.Delete, contentDescription = "删除", tint = Color.White)
-                    }
-                    SwipeToDismissBoxValue.Settled -> Unit
-                }
-            }
-        },
-        enableDismissFromStartToEnd = true,
-        enableDismissFromEndToStart = true
+    SwipeRevealDeleteItem(
+        onDelete = onDelete,
+        isRevealed = isRevealed,
+        onRevealedChange = onRevealedChange,
+        onSwipeRightAction = onToggle,
+        modifier = Modifier
+            .fillMaxWidth()
+            .zIndex(if (isRevealed) 6f else 0f)
     ) {
-        NoteCard(note = note, onEdit = onEdit)
+        NoteCard(
+            note = note,
+            onEdit = {
+                if (hasAnyRevealed) {
+                    onCloseRequested()
+                } else {
+                    onEdit()
+                }
+            }
+        )
     }
 }
 

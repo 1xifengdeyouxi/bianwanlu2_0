@@ -43,18 +43,22 @@ import com.swu.bianwanlu2_0.ui.theme.NoteRed
 @Composable
 fun AddCategoryDialog(
     defaultType: CategoryType = CategoryType.NOTE,
+    initialName: String = "",
+    titleText: String = "新增分类",
+    confirmText: String = "新增",
+    typeEnabled: Boolean = true,
     onDismiss: () -> Unit,
     onConfirm: (name: String, type: CategoryType) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf(defaultType) }
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var selectedType by remember(defaultType) { mutableStateOf(defaultType) }
     var isLocked by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "新增分类",
+                text = titleText,
                 fontWeight = FontWeight.Medium,
                 fontSize = 18.sp,
                 modifier = Modifier.fillMaxWidth(),
@@ -73,6 +77,7 @@ fun AddCategoryDialog(
                     Switch(
                         checked = isLocked,
                         onCheckedChange = { isLocked = it },
+                        enabled = false,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = NoteRed
@@ -92,7 +97,8 @@ fun AddCategoryDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(
                             selected = selectedType == CategoryType.NOTE,
-                            onClick = { selectedType = CategoryType.NOTE },
+                            onClick = { if (typeEnabled) selectedType = CategoryType.NOTE },
+                            enabled = typeEnabled,
                             colors = RadioButtonDefaults.colors(selectedColor = NoteRed)
                         )
                         Text("便签", fontSize = 14.sp, color = Color(0xFF212121))
@@ -101,7 +107,8 @@ fun AddCategoryDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(
                             selected = selectedType == CategoryType.TODO,
-                            onClick = { selectedType = CategoryType.TODO },
+                            onClick = { if (typeEnabled) selectedType = CategoryType.TODO },
+                            enabled = typeEnabled,
                             colors = RadioButtonDefaults.colors(selectedColor = NoteRed)
                         )
                         Text("待办", fontSize = 14.sp, color = Color(0xFF212121))
@@ -134,7 +141,7 @@ fun AddCategoryDialog(
                 onClick = { onConfirm(name, selectedType) },
                 enabled = name.isNotBlank()
             ) {
-                Text("新增", color = if (name.isNotBlank()) NoteRed else Color(0xFFBDBDBD), fontSize = 16.sp)
+                Text(confirmText, color = if (name.isNotBlank()) NoteRed else Color(0xFFBDBDBD), fontSize = 16.sp)
             }
         },
         dismissButton = {

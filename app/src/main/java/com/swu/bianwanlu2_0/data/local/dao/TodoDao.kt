@@ -50,4 +50,13 @@ interface TodoDao {
 
     @Query("SELECT * FROM todos WHERE id = :id LIMIT 1")
     fun getById(id: Long): Flow<Todo?>
+
+    @Query("UPDATE todos SET category_id = :targetCategoryId, updated_at = :updatedAt WHERE user_id = :userId AND category_id IS NULL")
+    suspend fun assignUncategorized(userId: Long, targetCategoryId: Long, updatedAt: Long)
+
+    @Query("UPDATE todos SET category_id = :targetCategoryId, updated_at = :updatedAt WHERE category_id = :categoryId")
+    suspend fun moveCategory(categoryId: Long, targetCategoryId: Long, updatedAt: Long)
+
+    @Query("DELETE FROM todos WHERE category_id = :categoryId")
+    suspend fun deleteByCategory(categoryId: Long)
 }

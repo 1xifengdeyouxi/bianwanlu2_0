@@ -116,11 +116,6 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         AppDestination.Todo -> todoSelectedCategory
         else -> null
     }
-    val defaultLabel = when (currentDestination) {
-        AppDestination.Notes -> "笔记"
-        AppDestination.Todo -> "待办"
-        else -> ""
-    }
 
     var showCategoryDropdown by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
@@ -289,12 +284,24 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     }
                 }
 
+                if (hasCategoryDropdown && showCategoryDropdown) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { showCategoryDropdown = false }
+                            )
+                            .zIndex(5f)
+                    )
+                }
+
                 if (hasCategoryDropdown) {
                     CategoryDropdown(
                         visible = showCategoryDropdown,
                         categories = categories,
                         selectedCategory = selectedCategory,
-                        defaultLabel = defaultLabel,
                         onSelect = { cat ->
                             when (currentDestination) {
                                 AppDestination.Notes -> noteViewModel.selectCategory(cat)

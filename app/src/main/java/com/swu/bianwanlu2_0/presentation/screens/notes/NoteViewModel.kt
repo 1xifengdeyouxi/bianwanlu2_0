@@ -2,6 +2,7 @@ package com.swu.bianwanlu2_0.presentation.screens.notes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.swu.bianwanlu2_0.data.local.CategorySelectionStore
 import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
 import com.swu.bianwanlu2_0.data.local.entity.Note
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -37,7 +39,8 @@ enum class NoteFilter(val label: String) {
 @HiltViewModel
 class NoteViewModel @Inject constructor(
     private val noteRepository: NoteRepository,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val categorySelectionStore: CategorySelectionStore
 ) : ViewModel() {
 
     /** 笔记分类列表 */
@@ -45,18 +48,17 @@ class NoteViewModel @Inject constructor(
         .getCategories(GUEST_USER_ID, CategoryType.NOTE)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** 当前选中的分类，null 表示"全部" */
+    /** 当前选中的分类 */
     private val _selectedCategory = MutableStateFlow<Category?>(null)
     val selectedCategory: StateFlow<Category?> = _selectedCategory.asStateFlow()
 
     private val _currentFilter = MutableStateFlow(NoteFilter.ALL)
     val currentFilter: StateFlow<NoteFilter> = _currentFilter.asStateFlow()
 
-    /** 根据选中分类自动切换数据源 */
     private val notesByCategory: Flow<List<Note>> = _selectedCategory
         .flatMapLatest { category ->
             if (category == null) {
-                noteRepository.getAllNotes(GUEST_USER_ID)
+                flowOf(emptyList())
             } else {
                 noteRepository.getNotesByCategory(GUEST_USER_ID, category.id)
             }
@@ -80,7 +82,7 @@ class NoteViewModel @Inject constructor(
     val noteCount: StateFlow<Int> = _selectedCategory
         .flatMapLatest { category ->
             if (category == null) {
-                noteRepository.countNotes(GUEST_USER_ID)
+                flowOf(0)
             } else {
                 noteRepository.countNotesByCategory(GUEST_USER_ID, category.id)
             }
@@ -91,13 +93,40 @@ class NoteViewModel @Inject constructor(
     val selectedCategoryName: StateFlow<String> = MutableStateFlow("笔记").also { flow ->
         viewModelScope.launch {
             _selectedCategory.collect { category ->
-                (flow as MutableStateFlow).value = category?.name ?: "笔记"
+                flow.value = category?.name ?: "笔记"
+            }
+        }
+    }
+
+    init {
+        viewModelScope.launch {
+            categoryRepository.ensureDefaultCategory(GUEST_USER_ID, CategoryType.NOTE)
+        }
+
+        viewModelScope.launch {
+            categories.collect { categoryList ->
+                if (categoryList.isEmpty()) return@collect
+
+                val savedCategoryId = categorySelectionStore.getSelectedCategoryId(CategoryType.NOTE)
+                val currentCategory = _selectedCategory.value
+                val matchedCategory = when {
+                    currentCategory != null -> categoryList.firstOrNull { it.id == currentCategory.id }
+                    savedCategoryId != null -> categoryList.find { it.id == savedCategoryId }
+                    else -> categoryList.firstOrNull()
+                }
+
+                if (_selectedCategory.value?.id != matchedCategory?.id) {
+                    _selectedCategory.value = matchedCategory
+                }
+
+                categorySelectionStore.setSelectedCategoryId(CategoryType.NOTE, matchedCategory?.id)
             }
         }
     }
 
     fun selectCategory(category: Category?) {
         _selectedCategory.value = category
+        categorySelectionStore.setSelectedCategoryId(CategoryType.NOTE, category?.id)
     }
 
     fun setFilter(filter: NoteFilter) {

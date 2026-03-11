@@ -35,4 +35,13 @@ interface NoteDao {
 
     @Query("SELECT * FROM notes WHERE id = :id LIMIT 1")
     fun getById(id: Long): Flow<Note?>
+
+    @Query("UPDATE notes SET category_id = :targetCategoryId, updated_at = :updatedAt WHERE user_id = :userId AND category_id IS NULL")
+    suspend fun assignUncategorized(userId: Long, targetCategoryId: Long, updatedAt: Long)
+
+    @Query("UPDATE notes SET category_id = :targetCategoryId, updated_at = :updatedAt WHERE category_id = :categoryId")
+    suspend fun moveCategory(categoryId: Long, targetCategoryId: Long, updatedAt: Long)
+
+    @Query("DELETE FROM notes WHERE category_id = :categoryId")
+    suspend fun deleteByCategory(categoryId: Long)
 }

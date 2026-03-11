@@ -1,6 +1,5 @@
 package com.swu.bianwanlu2_0.presentation.screens.todo
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Flag
@@ -33,12 +31,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,10 +48,12 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swu.bianwanlu2_0.R
 import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.data.local.entity.TodoStatus
+import com.swu.bianwanlu2_0.presentation.components.SwipeRevealDeleteItem
 import com.swu.bianwanlu2_0.ui.theme.EmptyIconColor
 import com.swu.bianwanlu2_0.ui.theme.EmptyTextColor
 import com.swu.bianwanlu2_0.ui.theme.NoteRed
@@ -76,8 +72,21 @@ fun TodoListScreen(
     val activeTodos by viewModel.activeTodos.collectAsStateWithLifecycle()
     val completedTodos by viewModel.completedTodos.collectAsStateWithLifecycle()
     val currentFilter by viewModel.currentFilter.collectAsStateWithLifecycle()
+    var openedTodoId by remember { mutableStateOf<Long?>(null) }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {
+                    if (openedTodoId != null) {
+                        openedTodoId = null
+                    }
+                }
+            )
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             FilterTabRow(
                 currentFilter = currentFilter,
@@ -94,6 +103,8 @@ fun TodoListScreen(
                 TodoContent(
                     activeTodos = activeTodos,
                     completedTodos = completedTodos,
+                    openedTodoId = openedTodoId,
+                    onOpenedTodoChange = { openedTodoId = it },
                     onToggle = viewModel::toggleComplete,
                     onDelete = viewModel::deleteTodo,
                     onEdit = onEditTodo,
@@ -172,6 +183,8 @@ private fun FilterChip(
 private fun TodoContent(
     activeTodos: List<Todo>,
     completedTodos: List<Todo>,
+    openedTodoId: Long?,
+    onOpenedTodoChange: (Long?) -> Unit,
     onToggle: (Todo) -> Unit,
     onDelete: (Todo) -> Unit,
     onEdit: (Todo) -> Unit,
@@ -189,6 +202,10 @@ private fun TodoContent(
         items(activeTodos, key = { "a_${it.id}" }) { todo ->
             SwipeToDeleteTodoItem(
                 todo = todo,
+                hasAnyRevealed = openedTodoId != null,
+                isRevealed = openedTodoId == todo.id,
+                onRevealedChange = { revealed -> onOpenedTodoChange(if (revealed) todo.id else null) },
+                onCloseRequested = { onOpenedTodoChange(null) },
                 onToggle = { onToggle(todo) },
                 onDelete = { onDelete(todo) },
                 onEdit = { onEdit(todo) }
@@ -209,6 +226,10 @@ private fun TodoContent(
                 items(completedTodos, key = { "c_${it.id}" }) { todo ->
                     SwipeToDeleteTodoItem(
                         todo = todo,
+                        hasAnyRevealed = openedTodoId != null,
+                        isRevealed = openedTodoId == todo.id,
+                        onRevealedChange = { revealed -> onOpenedTodoChange(if (revealed) todo.id else null) },
+                        onCloseRequested = { onOpenedTodoChange(null) },
                         onToggle = { onToggle(todo) },
                         onDelete = { onDelete(todo) },
                         onEdit = { onEdit(todo) }
@@ -261,43 +282,33 @@ private fun CompletedSectionHeader(
 @Composable
 private fun SwipeToDeleteTodoItem(
     todo: Todo,
+    hasAnyRevealed: Boolean,
+    isRevealed: Boolean,
+    onRevealedChange: (Boolean) -> Unit,
+    onCloseRequested: () -> Unit,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit
 ) {
-    val dismissState = rememberSwipeToDismissBoxState()
-
-    LaunchedEffect(dismissState.currentValue) {
-        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
-            onDelete()
-        }
-    }
-
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            val color by animateColorAsState(
-                targetValue = if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart)
-                    NoteRed else Color.Transparent,
-                label = "bg_color"
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(color, RoundedCornerShape(12.dp))
-                    .padding(end = 20.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "删除",
-                    tint = Color.White
-                )
-            }
-        },
-        enableDismissFromStartToEnd = false
+    SwipeRevealDeleteItem(
+        onDelete = onDelete,
+        isRevealed = isRevealed,
+        onRevealedChange = onRevealedChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .zIndex(if (isRevealed) 6f else 0f)
     ) {
-        TodoCard(todo = todo, onToggle = onToggle, onEdit = onEdit)
+        TodoCard(
+            todo = todo,
+            onToggle = onToggle,
+            onEdit = {
+                if (hasAnyRevealed) {
+                    onCloseRequested()
+                } else {
+                    onEdit()
+                }
+            }
+        )
     }
 }
 
