@@ -52,6 +52,15 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:model"))
+    implementation(project(":core:data"))
+    implementation(project(":core:ui"))
+    implementation(project(":feature:notes"))
+    implementation(project(":feature:todo"))
+    implementation(project(":feature:category"))
+    implementation(project(":feature:calendar"))
+    implementation(project(":feature:timeline"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -96,3 +105,4 @@ dependencies {
     ksp(libs.hilt.compiler)
     kspTest(libs.hilt.compiler)
 }
+
