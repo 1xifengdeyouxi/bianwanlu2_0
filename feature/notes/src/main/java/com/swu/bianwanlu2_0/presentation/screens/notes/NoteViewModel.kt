@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -43,17 +45,22 @@ class NoteViewModel @Inject constructor(
     private val categorySelectionStore: CategorySelectionStore
 ) : ViewModel() {
 
-    /** 笔记分类列表 */
     val categories: StateFlow<List<Category>> = categoryRepository
         .getCategories(GUEST_USER_ID, CategoryType.NOTE)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** 当前选中的分类 */
     private val _selectedCategory = MutableStateFlow<Category?>(null)
     val selectedCategory: StateFlow<Category?> = _selectedCategory.asStateFlow()
 
     private val _currentFilter = MutableStateFlow(NoteFilter.ALL)
     val currentFilter: StateFlow<NoteFilter> = _currentFilter.asStateFlow()
+
+    private val _selectedNoteIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedNoteIds: StateFlow<Set<Long>> = _selectedNoteIds.asStateFlow()
+
+    val isSelectionMode: StateFlow<Boolean> = _selectedNoteIds
+        .map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val notesByCategory: Flow<List<Note>> = _selectedCategory
         .flatMapLatest { category ->
@@ -79,6 +86,10 @@ class NoteViewModel @Inject constructor(
         .map { list -> list.filter { it.status == NoteStatus.COMPLETED } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val selectedNotes: StateFlow<List<Note>> = combine(notes, _selectedNoteIds) { list, selectedIds ->
+        list.filter { it.id in selectedIds }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val noteCount: StateFlow<Int> = _selectedCategory
         .flatMapLatest { category ->
             if (category == null) {
@@ -89,7 +100,6 @@ class NoteViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    /** 选中的分类名称，用于 TopBar 显示 */
     val selectedCategoryName: StateFlow<String> = MutableStateFlow("笔记").also { flow ->
         viewModelScope.launch {
             _selectedCategory.collect { category ->
@@ -122,15 +132,135 @@ class NoteViewModel @Inject constructor(
                 categorySelectionStore.setSelectedCategoryId(CategoryType.NOTE, matchedCategory?.id)
             }
         }
+
+        viewModelScope.launch {
+            notes
+                .map { list -> list.map { it.id }.toSet() }
+                .distinctUntilChanged()
+                .collect { availableIds ->
+                    val retained = _selectedNoteIds.value.filterTo(mutableSetOf()) { it in availableIds }
+                    if (retained.size != _selectedNoteIds.value.size) {
+                        _selectedNoteIds.value = retained
+                    }
+                }
+        }
     }
 
     fun selectCategory(category: Category?) {
+        clearSelection()
         _selectedCategory.value = category
         categorySelectionStore.setSelectedCategoryId(CategoryType.NOTE, category?.id)
     }
 
     fun setFilter(filter: NoteFilter) {
+        clearSelection()
         _currentFilter.value = filter
+    }
+
+    fun enterSelection(noteId: Long) {
+        _selectedNoteIds.value = _selectedNoteIds.value + noteId
+    }
+
+    fun toggleSelection(noteId: Long) {
+        val current = _selectedNoteIds.value.toMutableSet()
+        if (!current.add(noteId)) {
+            current.remove(noteId)
+        }
+        _selectedNoteIds.value = current
+    }
+
+    fun clearSelection() {
+        _selectedNoteIds.value = emptySet()
+    }
+
+    fun selectAllFilteredNotes() {
+        _selectedNoteIds.value = filteredNotes.value.mapTo(mutableSetOf()) { it.id }
+    }
+
+    fun applyPriorityToSelectedNotes() {
+        val selectedIds = _selectedNoteIds.value.toList()
+        if (selectedIds.isEmpty()) return
+
+        viewModelScope.launch {
+            val selectedItems = selectedIds.mapNotNull { id ->
+                noteRepository.getNoteById(id).first()
+            }
+            if (selectedItems.isEmpty()) return@launch
+
+            val now = System.currentTimeMillis()
+            val hasNonPriorityNote = selectedItems.any { !it.isPriority }
+            val notesToUpdate = if (hasNonPriorityNote) {
+                selectedItems.filter { !it.isPriority }
+            } else {
+                selectedItems.filter { it.isPriority }
+            }
+
+            notesToUpdate.forEach { note ->
+                noteRepository.update(
+                    note.copy(
+                        isPriority = hasNonPriorityNote,
+                        updatedAt = now
+                    )
+                )
+            }
+            clearSelection()
+        }
+    }
+
+    fun updateReminderForSelectedNotes(reminderTime: Long?) {
+        val selectedIds = _selectedNoteIds.value.toList()
+        if (selectedIds.isEmpty()) return
+
+        viewModelScope.launch {
+            val selectedItems = selectedIds.mapNotNull { id ->
+                noteRepository.getNoteById(id).first()
+            }
+            if (selectedItems.isEmpty()) return@launch
+
+            val now = System.currentTimeMillis()
+            selectedItems.forEach { note ->
+                if (note.reminderTime != reminderTime) {
+                    noteRepository.update(
+                        note.copy(
+                            reminderTime = reminderTime,
+                            updatedAt = now
+                        )
+                    )
+                }
+            }
+            clearSelection()
+        }
+    }
+
+    fun deleteSelectedNotes() {
+        val selectedIds = _selectedNoteIds.value.toList()
+        if (selectedIds.isEmpty()) return
+
+        viewModelScope.launch {
+            selectedIds.forEach { id ->
+                noteRepository.getNoteById(id).first()?.let { note ->
+                    noteRepository.delete(note)
+                }
+            }
+            clearSelection()
+        }
+    }
+
+    fun reorderNotes(reorderedNotes: List<Note>) {
+        if (reorderedNotes.isEmpty()) return
+
+        viewModelScope.launch {
+            val baseOrder = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
+            reorderedNotes.forEachIndexed { index, note ->
+                noteRepository.update(
+                    note.copy(
+                        sortOrder = baseOrder - index,
+                        updatedAt = now
+                    )
+                )
+            }
+        }
     }
 
     fun addNote(
@@ -217,13 +347,13 @@ class NoteViewModel @Inject constructor(
             NoteFilter.IN_PROGRESS -> list.filter {
                 val reminderTime = it.reminderTime
                 it.status == NoteStatus.ACTIVE &&
-                        (reminderTime == null || reminderTime >= now)
+                    (reminderTime == null || reminderTime >= now)
             }
             NoteFilter.EXPIRED -> list.filter {
                 val reminderTime = it.reminderTime
                 it.status == NoteStatus.ACTIVE &&
-                        reminderTime != null &&
-                        reminderTime < now
+                    reminderTime != null &&
+                    reminderTime < now
             }
             NoteFilter.TODAY -> list.filter {
                 val reminderTime = it.reminderTime

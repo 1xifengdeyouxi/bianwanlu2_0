@@ -1,4 +1,4 @@
-package com.swu.bianwanlu2_0.data.local.entity
+﻿package com.swu.bianwanlu2_0.data.local.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
@@ -35,6 +35,9 @@ data class Note(
 
     @ColumnInfo(name = "image_uris")
     val imageUris: String = "",
+
+    @ColumnInfo(name = "sort_order")
+    val sortOrder: Long = System.currentTimeMillis(),
 
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis(),

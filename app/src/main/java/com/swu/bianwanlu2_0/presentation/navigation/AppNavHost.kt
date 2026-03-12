@@ -66,6 +66,12 @@ import com.swu.bianwanlu2_0.presentation.screens.category.CategoryViewModel
 import com.swu.bianwanlu2_0.presentation.screens.notes.AddNoteScreen
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteListScreen
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteViewModel
+import com.swu.bianwanlu2_0.presentation.screens.profile.AboutBianwanluScreen
+import com.swu.bianwanlu2_0.presentation.screens.profile.DataAndSyncScreen
+import com.swu.bianwanlu2_0.presentation.screens.profile.GeneralSettingsScreen
+import com.swu.bianwanlu2_0.presentation.screens.profile.MyMenuAction
+import com.swu.bianwanlu2_0.presentation.screens.profile.MyScreen
+import com.swu.bianwanlu2_0.presentation.screens.profile.ReminderSettingsScreen
 import com.swu.bianwanlu2_0.presentation.screens.timeline.TimelineScreen
 import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.data.local.entity.Todo
@@ -75,6 +81,15 @@ import com.swu.bianwanlu2_0.presentation.screens.todo.TodoViewModel
 import com.swu.bianwanlu2_0.ui.theme.Bianwanlu2_0Theme
 import com.swu.bianwanlu2_0.ui.theme.NavUnselected
 import kotlinx.coroutines.launch
+
+private enum class MyPageDestination {
+    Root,
+    CategoryManage,
+    ReminderSettings,
+    DataAndSync,
+    GeneralSettings,
+    About,
+}
 
 @Composable
 fun AppNavHost(modifier: Modifier = Modifier) {
@@ -100,6 +115,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
 
     val noteSelectedCategory by noteViewModel.selectedCategory.collectAsStateWithLifecycle()
     val todoSelectedCategory by todoViewModel.selectedCategory.collectAsStateWithLifecycle()
+    val noteSelectionMode by noteViewModel.isSelectionMode.collectAsStateWithLifecycle()
+    val selectedNoteIds by noteViewModel.selectedNoteIds.collectAsStateWithLifecycle()
+    val selectedNotes by noteViewModel.selectedNotes.collectAsStateWithLifecycle()
+    val filteredNotes by noteViewModel.filteredNotes.collectAsStateWithLifecycle()
     val todoSelectionMode by todoViewModel.isSelectionMode.collectAsStateWithLifecycle()
     val selectedTodoIds by todoViewModel.selectedTodoIds.collectAsStateWithLifecycle()
     val selectedTodos by todoViewModel.selectedTodos.collectAsStateWithLifecycle()
@@ -130,16 +149,79 @@ fun AppNavHost(modifier: Modifier = Modifier) {
 
     var showCategoryDropdown by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var showMyPage by remember { mutableStateOf(false) }
+    var myPageDestination by remember { mutableStateOf(MyPageDestination.Root) }
+    var showContactDialog by remember { mutableStateOf(false) }
     var showCategoryManage by remember { mutableStateOf(false) }
     var showAddNote by remember { mutableStateOf(false) }
     var editingNote by remember { mutableStateOf<Note?>(null) }
     var showAddTodo by remember { mutableStateOf(false) }
     var editingTodo by remember { mutableStateOf<Todo?>(null) }
-    var showBatchReminderDialog by remember { mutableStateOf(false) }
+    var showBatchNoteReminderDialog by remember { mutableStateOf(false) }
+    var showDeleteNotesConfirm by remember { mutableStateOf(false) }
+    var showBatchTodoReminderDialog by remember { mutableStateOf(false) }
     var showDeleteTodosConfirm by remember { mutableStateOf(false) }
 
+    val allFilteredNotesSelected =
+        filteredNotes.isNotEmpty() && filteredNotes.all { it.id in selectedNoteIds }
     val allFilteredTodosSelected =
         filteredTodos.isNotEmpty() && filteredTodos.all { it.id in selectedTodoIds }
+
+    if (showMyPage) {
+        when (myPageDestination) {
+            MyPageDestination.Root -> {
+                MyScreen(
+                    onBack = {
+                        showContactDialog = false
+                        myPageDestination = MyPageDestination.Root
+                        showMyPage = false
+                    },
+                    onMenuClick = { action ->
+                        when (action) {
+                            MyMenuAction.CategoryManage -> myPageDestination = MyPageDestination.CategoryManage
+                            MyMenuAction.ReminderSettings -> myPageDestination = MyPageDestination.ReminderSettings
+                            MyMenuAction.DataAndSync -> myPageDestination = MyPageDestination.DataAndSync
+                            MyMenuAction.GeneralSettings -> myPageDestination = MyPageDestination.GeneralSettings
+                            MyMenuAction.ContactUs -> showContactDialog = true
+                            MyMenuAction.About -> myPageDestination = MyPageDestination.About
+                        }
+                    }
+                )
+            }
+            MyPageDestination.CategoryManage -> {
+                CategoryManageScreen(
+                    viewModel = categoryViewModel,
+                    onBack = { myPageDestination = MyPageDestination.Root }
+                )
+            }
+            MyPageDestination.ReminderSettings -> {
+                ReminderSettingsScreen(onBack = { myPageDestination = MyPageDestination.Root })
+            }
+            MyPageDestination.DataAndSync -> {
+                DataAndSyncScreen(onBack = { myPageDestination = MyPageDestination.Root })
+            }
+            MyPageDestination.GeneralSettings -> {
+                GeneralSettingsScreen(onBack = { myPageDestination = MyPageDestination.Root })
+            }
+            MyPageDestination.About -> {
+                AboutBianwanluScreen(onBack = { myPageDestination = MyPageDestination.Root })
+            }
+        }
+
+        if (showContactDialog) {
+            AlertDialog(
+                onDismissRequest = { showContactDialog = false },
+                title = { Text("联系我们") },
+                text = { Text("如需反馈问题或建议，可后续通过官方联系方式联系我们。当前先完成页面交互。", color = Color(0xFF616161)) },
+                confirmButton = {
+                    TextButton(onClick = { showContactDialog = false }) {
+                        Text("我知道了", color = Color(0xFF212121))
+                    }
+                }
+            )
+        }
+        return
+    }
 
     // 新建笔记全屏页面
     if (showAddNote) {
@@ -210,17 +292,55 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         return
     }
 
-    if (showBatchReminderDialog) {
+    if (showBatchNoteReminderDialog) {
         ReminderDialog(
-            onDismiss = { showBatchReminderDialog = false },
+            onDismiss = { showBatchNoteReminderDialog = false },
+            onSelect = { time ->
+                noteViewModel.updateReminderForSelectedNotes(time)
+                showBatchNoteReminderDialog = false
+            },
+            showClearAction = selectedNotes.any { it.reminderTime != null },
+            onClear = {
+                noteViewModel.updateReminderForSelectedNotes(null)
+                showBatchNoteReminderDialog = false
+            }
+        )
+    }
+
+    if (showDeleteNotesConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteNotesConfirm = false },
+            title = { Text("删除笔记") },
+            text = { Text("确定删除已选择的笔记吗？", color = Color(0xFF616161)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        noteViewModel.deleteSelectedNotes()
+                        showDeleteNotesConfirm = false
+                    }
+                ) {
+                    Text("删除", color = Color(0xFFE65E4F))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteNotesConfirm = false }) {
+                    Text("取消", color = Color(0xFF212121))
+                }
+            }
+        )
+    }
+
+    if (showBatchTodoReminderDialog) {
+        ReminderDialog(
+            onDismiss = { showBatchTodoReminderDialog = false },
             onSelect = { time ->
                 todoViewModel.updateReminderForSelectedTodos(time)
-                showBatchReminderDialog = false
+                showBatchTodoReminderDialog = false
             },
             showClearAction = selectedTodos.any { it.reminderTime != null },
             onClear = {
                 todoViewModel.updateReminderForSelectedTodos(null)
-                showBatchReminderDialog = false
+                showBatchTodoReminderDialog = false
             }
         )
     }
@@ -277,7 +397,12 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     }
                     scope.launch { drawerState.close() }
                 },
-                onMyClick = { scope.launch { drawerState.close() } },
+                onMyClick = {
+                    myPageDestination = MyPageDestination.Root
+                    showContactDialog = false
+                    showMyPage = true
+                    scope.launch { drawerState.close() }
+                },
                 onSyncClick = { scope.launch { drawerState.close() } },
                 onGameClick = { scope.launch { drawerState.close() } }
             )
@@ -287,16 +412,32 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         Scaffold(
             modifier = modifier,
             topBar = {
-                if (currentDestination == AppDestination.Todo && todoSelectionMode) {
+                if ((currentDestination == AppDestination.Notes && noteSelectionMode) ||
+                    (currentDestination == AppDestination.Todo && todoSelectionMode)
+                ) {
                     TodoSelectionTopBar(
-                        selectedCount = selectedTodoIds.size,
-                        allSelected = allFilteredTodosSelected,
-                        onCancel = { todoViewModel.clearSelection() },
-                        onSelectAllToggle = {
-                            if (allFilteredTodosSelected) {
-                                todoViewModel.clearSelection()
+                        selectedCount = if (currentDestination == AppDestination.Notes) selectedNoteIds.size else selectedTodoIds.size,
+                        allSelected = if (currentDestination == AppDestination.Notes) allFilteredNotesSelected else allFilteredTodosSelected,
+                        onCancel = {
+                            if (currentDestination == AppDestination.Notes) {
+                                noteViewModel.clearSelection()
                             } else {
-                                todoViewModel.selectAllFilteredTodos()
+                                todoViewModel.clearSelection()
+                            }
+                        },
+                        onSelectAllToggle = {
+                            if (currentDestination == AppDestination.Notes) {
+                                if (allFilteredNotesSelected) {
+                                    noteViewModel.clearSelection()
+                                } else {
+                                    noteViewModel.selectAllFilteredNotes()
+                                }
+                            } else {
+                                if (allFilteredTodosSelected) {
+                                    todoViewModel.clearSelection()
+                                } else {
+                                    todoViewModel.selectAllFilteredTodos()
+                                }
                             }
                         }
                     )
@@ -316,16 +457,39 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 }
             },
             bottomBar = {
-                if (currentDestination == AppDestination.Todo && todoSelectionMode) {
+                if ((currentDestination == AppDestination.Notes && noteSelectionMode) ||
+                    (currentDestination == AppDestination.Todo && todoSelectionMode)
+                ) {
                     TodoSelectionBottomBar(
-                        onPriorityClick = { todoViewModel.applyPriorityToSelectedTodos() },
-                        onReminderClick = { showBatchReminderDialog = true },
-                        onDeleteClick = { showDeleteTodosConfirm = true }
+                        onPriorityClick = {
+                            if (currentDestination == AppDestination.Notes) {
+                                noteViewModel.applyPriorityToSelectedNotes()
+                            } else {
+                                todoViewModel.applyPriorityToSelectedTodos()
+                            }
+                        },
+                        onReminderClick = {
+                            if (currentDestination == AppDestination.Notes) {
+                                showBatchNoteReminderDialog = true
+                            } else {
+                                showBatchTodoReminderDialog = true
+                            }
+                        },
+                        onDeleteClick = {
+                            if (currentDestination == AppDestination.Notes) {
+                                showDeleteNotesConfirm = true
+                            } else {
+                                showDeleteTodosConfirm = true
+                            }
+                        }
                     )
                 } else {
                     BottomNavBar(
                         currentDestination = currentDestination,
                         onDestinationSelected = {
+                            if (currentDestination == AppDestination.Notes && it != currentDestination) {
+                                noteViewModel.clearSelection()
+                            }
                             if (currentDestination == AppDestination.Todo && it != currentDestination) {
                                 todoViewModel.clearSelection()
                             }

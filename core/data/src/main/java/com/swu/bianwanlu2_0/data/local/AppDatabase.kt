@@ -15,7 +15,7 @@ import com.swu.bianwanlu2_0.data.local.entity.Todo
 
 @Database(
     entities = [Note::class, Todo::class, Category::class],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -72,6 +72,13 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE todos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("UPDATE todos SET sort_order = updated_at")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE notes SET sort_order = updated_at")
             }
         }
     }

@@ -21,10 +21,10 @@ interface NoteDao {
     @Delete
     suspend fun delete(note: Note)
 
-    @Query("SELECT * FROM notes WHERE user_id = :userId ORDER BY updated_at DESC")
+    @Query("SELECT * FROM notes WHERE user_id = :userId ORDER BY sort_order DESC, updated_at DESC")
     fun getAllByUser(userId: Long): Flow<List<Note>>
 
-    @Query("SELECT * FROM notes WHERE user_id = :userId AND category_id = :categoryId ORDER BY updated_at DESC")
+    @Query("SELECT * FROM notes WHERE user_id = :userId AND category_id = :categoryId ORDER BY sort_order DESC, updated_at DESC")
     fun getByUserAndCategory(userId: Long, categoryId: Long): Flow<List<Note>>
 
     @Query("SELECT COUNT(*) FROM notes WHERE user_id = :userId")
