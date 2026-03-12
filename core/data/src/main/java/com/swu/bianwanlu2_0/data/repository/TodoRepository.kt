@@ -17,4 +17,7 @@ interface TodoRepository {
     suspend fun insert(todo: Todo): Long
     suspend fun update(todo: Todo)
     suspend fun delete(todo: Todo)
+    suspend fun updatePriorityByIds(ids: List<Long>, isPriority: Boolean, updatedAt: Long)
+    suspend fun updateReminderByIds(ids: List<Long>, reminderTime: Long?, updatedAt: Long)
+    suspend fun deleteByIds(ids: List<Long>)
 }

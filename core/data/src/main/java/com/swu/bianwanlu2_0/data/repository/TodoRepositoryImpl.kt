@@ -49,4 +49,13 @@ class TodoRepositoryImpl @Inject constructor(
 
     override suspend fun delete(todo: Todo) =
         todoDao.delete(todo)
+
+    override suspend fun updatePriorityByIds(ids: List<Long>, isPriority: Boolean, updatedAt: Long) =
+        todoDao.updatePriorityByIds(ids, isPriority, updatedAt)
+
+    override suspend fun updateReminderByIds(ids: List<Long>, reminderTime: Long?, updatedAt: Long) =
+        todoDao.updateReminderByIds(ids, reminderTime, updatedAt)
+
+    override suspend fun deleteByIds(ids: List<Long>) =
+        todoDao.deleteByIds(ids)
 }

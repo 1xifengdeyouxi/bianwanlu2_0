@@ -1,4 +1,4 @@
-package com.swu.bianwanlu2_0.presentation.screens.todo
+﻿package com.swu.bianwanlu2_0.presentation.screens.todo
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -53,6 +54,8 @@ class TodoViewModel @Inject constructor(
     private val _currentFilter = MutableStateFlow(TodoFilter.ALL)
     val currentFilter: StateFlow<TodoFilter> = _currentFilter.asStateFlow()
 
+    private val _refreshVersion = MutableStateFlow(0)
+
     private val _selectedTodoIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedTodoIds: StateFlow<Set<Long>> = _selectedTodoIds.asStateFlow()
 
@@ -60,7 +63,7 @@ class TodoViewModel @Inject constructor(
         .map { it.isNotEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    val todos: StateFlow<List<Todo>> = _selectedCategory
+    val todos: StateFlow<List<Todo>> = combine(_selectedCategory, _refreshVersion) { category, _ -> category }
         .flatMapLatest { category ->
             if (category == null) {
                 flowOf(emptyList())
@@ -175,43 +178,69 @@ class TodoViewModel @Inject constructor(
     }
 
     fun applyPriorityToSelectedTodos() {
-        val selectedIds = _selectedTodoIds.value
+        val selectedIds = _selectedTodoIds.value.toList()
         if (selectedIds.isEmpty()) return
 
         viewModelScope.launch {
+            val selectedItems = selectedIds.mapNotNull { id ->
+                todoRepository.getTodoById(id).first()
+            }
+            if (selectedItems.isEmpty()) return@launch
+
             val now = System.currentTimeMillis()
-            todos.value
-                .filter { it.id in selectedIds && !it.isPriority }
-                .forEach { todo ->
-                    todoRepository.update(todo.copy(isPriority = true, updatedAt = now))
-                }
+            val hasNonPriorityTodo = selectedItems.any { !it.isPriority }
+            val todosToUpdate = if (hasNonPriorityTodo) {
+                selectedItems.filter { !it.isPriority }
+            } else {
+                selectedItems.filter { it.isPriority }
+            }
+
+            todosToUpdate.forEach { todo ->
+                todoRepository.update(
+                    todo.copy(
+                        isPriority = hasNonPriorityTodo,
+                        updatedAt = now
+                    )
+                )
+            }
+            _refreshVersion.value += 1
             clearSelection()
         }
     }
 
     fun updateReminderForSelectedTodos(reminderTime: Long?) {
-        val selectedIds = _selectedTodoIds.value
+        val selectedIds = _selectedTodoIds.value.toList()
         if (selectedIds.isEmpty()) return
 
         viewModelScope.launch {
+            val selectedItems = selectedIds.mapNotNull { id ->
+                todoRepository.getTodoById(id).first()
+            }
+            if (selectedItems.isEmpty()) return@launch
+
             val now = System.currentTimeMillis()
-            todos.value
-                .filter { it.id in selectedIds }
-                .forEach { todo ->
-                    todoRepository.update(todo.copy(reminderTime = reminderTime, updatedAt = now))
+            selectedItems.forEach { todo ->
+                if (todo.reminderTime != reminderTime) {
+                    todoRepository.update(
+                        todo.copy(
+                            reminderTime = reminderTime,
+                            updatedAt = now
+                        )
+                    )
                 }
+            }
+            _refreshVersion.value += 1
             clearSelection()
         }
     }
 
     fun deleteSelectedTodos() {
-        val selectedIds = _selectedTodoIds.value
+        val selectedIds = _selectedTodoIds.value.toList()
         if (selectedIds.isEmpty()) return
 
         viewModelScope.launch {
-            todos.value
-                .filter { it.id in selectedIds }
-                .forEach { todo -> todoRepository.delete(todo) }
+            todoRepository.deleteByIds(selectedIds)
+            _refreshVersion.value += 1
             clearSelection()
         }
     }
@@ -230,6 +259,7 @@ class TodoViewModel @Inject constructor(
                     )
                 )
             }
+            _refreshVersion.value += 1
         }
     }
 

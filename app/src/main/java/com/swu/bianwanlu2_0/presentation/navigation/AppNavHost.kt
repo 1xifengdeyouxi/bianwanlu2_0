@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalNavigationDrawer
@@ -135,6 +136,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     var showAddTodo by remember { mutableStateOf(false) }
     var editingTodo by remember { mutableStateOf<Todo?>(null) }
     var showBatchReminderDialog by remember { mutableStateOf(false) }
+    var showDeleteTodosConfirm by remember { mutableStateOf(false) }
 
     val allFilteredTodosSelected =
         filteredTodos.isNotEmpty() && filteredTodos.all { it.id in selectedTodoIds }
@@ -223,6 +225,29 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         )
     }
 
+    if (showDeleteTodosConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteTodosConfirm = false },
+            title = { Text("删除待办") },
+            text = { Text("确定删除已选择的待办吗？", color = Color(0xFF616161)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        todoViewModel.deleteSelectedTodos()
+                        showDeleteTodosConfirm = false
+                    }
+                ) {
+                    Text("删除", color = Color(0xFFE65E4F))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteTodosConfirm = false }) {
+                    Text("取消", color = Color(0xFF212121))
+                }
+            }
+        )
+    }
+
     // 分类管理全屏页面
     if (showCategoryManage) {
         CategoryManageScreen(
@@ -295,7 +320,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     TodoSelectionBottomBar(
                         onPriorityClick = { todoViewModel.applyPriorityToSelectedTodos() },
                         onReminderClick = { showBatchReminderDialog = true },
-                        onDeleteClick = { todoViewModel.deleteSelectedTodos() }
+                        onDeleteClick = { showDeleteTodosConfirm = true }
                     )
                 } else {
                     BottomNavBar(

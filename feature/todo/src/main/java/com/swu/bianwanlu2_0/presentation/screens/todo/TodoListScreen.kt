@@ -608,14 +608,20 @@ private fun TodoCard(
                     Modifier
                 }
             )
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-                onLongClick = {
-                    if (!selectionMode) {
-                        onLongPress?.invoke()
-                    }
+            .then(
+                if (selectionMode) {
+                    Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick
+                    )
+                } else {
+                    Modifier.combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick,
+                        onLongClick = { onLongPress?.invoke() }
+                    )
                 }
             ),
         shape = RoundedCornerShape(12.dp),
@@ -668,11 +674,11 @@ private fun TodoCard(
                 }
             }
 
-            if (todo.isPriority && !isCompleted) {
+            if (todo.isPriority) {
                 Icon(
                     imageVector = Icons.Outlined.Flag,
                     contentDescription = "高优先级",
-                    tint = NoteRed,
+                    tint = if (isCompleted) Color(0xFFBDBDBD) else NoteRed,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
@@ -729,6 +735,12 @@ private fun DragHandle(
         tint = Color(0xFFD2CCBC),
         modifier = Modifier
             .size(24.dp)
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+                onLongClick = {}
+            )
             .then(
                 if (onLongDragStart != null && onLongDrag != null && onLongDragEnd != null) {
                     Modifier.pointerInput(Unit) {

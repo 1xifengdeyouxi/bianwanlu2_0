@@ -21,6 +21,15 @@ interface TodoDao {
     @Delete
     suspend fun delete(todo: Todo)
 
+    @Query("UPDATE todos SET is_priority = :isPriority, updated_at = :updatedAt WHERE id IN (:ids)")
+    suspend fun updatePriorityByIds(ids: List<Long>, isPriority: Boolean, updatedAt: Long)
+
+    @Query("UPDATE todos SET reminder_time = :reminderTime, updated_at = :updatedAt WHERE id IN (:ids)")
+    suspend fun updateReminderByIds(ids: List<Long>, reminderTime: Long?, updatedAt: Long)
+
+    @Query("DELETE FROM todos WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
     @Query("SELECT * FROM todos WHERE user_id = :userId ORDER BY sort_order DESC, updated_at DESC")
     fun getAllByUser(userId: Long): Flow<List<Todo>>
 
