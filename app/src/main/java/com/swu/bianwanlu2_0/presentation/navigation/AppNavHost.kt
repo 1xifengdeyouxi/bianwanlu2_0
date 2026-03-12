@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -21,7 +22,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.DrawerValue
@@ -30,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,6 +58,7 @@ import com.swu.bianwanlu2_0.data.local.entity.CategoryType
 import com.swu.bianwanlu2_0.presentation.components.AddCategoryDialog
 import com.swu.bianwanlu2_0.presentation.components.AppDrawerContent
 import com.swu.bianwanlu2_0.presentation.components.CategoryDropdown
+import com.swu.bianwanlu2_0.presentation.components.ReminderDialog
 import com.swu.bianwanlu2_0.presentation.screens.calendar.CalendarScreen
 import com.swu.bianwanlu2_0.presentation.screens.category.CategoryManageScreen
 import com.swu.bianwanlu2_0.presentation.screens.category.CategoryViewModel
@@ -93,6 +99,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
 
     val noteSelectedCategory by noteViewModel.selectedCategory.collectAsStateWithLifecycle()
     val todoSelectedCategory by todoViewModel.selectedCategory.collectAsStateWithLifecycle()
+    val todoSelectionMode by todoViewModel.isSelectionMode.collectAsStateWithLifecycle()
+    val selectedTodoIds by todoViewModel.selectedTodoIds.collectAsStateWithLifecycle()
+    val selectedTodos by todoViewModel.selectedTodos.collectAsStateWithLifecycle()
+    val filteredTodos by todoViewModel.filteredTodos.collectAsStateWithLifecycle()
 
     val title = when (currentDestination) {
         AppDestination.Notes -> noteCategoryName
@@ -124,6 +134,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     var editingNote by remember { mutableStateOf<Note?>(null) }
     var showAddTodo by remember { mutableStateOf(false) }
     var editingTodo by remember { mutableStateOf<Todo?>(null) }
+    var showBatchReminderDialog by remember { mutableStateOf(false) }
+
+    val allFilteredTodosSelected =
+        filteredTodos.isNotEmpty() && filteredTodos.all { it.id in selectedTodoIds }
 
     // 新建笔记全屏页面
     if (showAddNote) {
@@ -194,6 +208,21 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         return
     }
 
+    if (showBatchReminderDialog) {
+        ReminderDialog(
+            onDismiss = { showBatchReminderDialog = false },
+            onSelect = { time ->
+                todoViewModel.updateReminderForSelectedTodos(time)
+                showBatchReminderDialog = false
+            },
+            showClearAction = selectedTodos.any { it.reminderTime != null },
+            onClear = {
+                todoViewModel.updateReminderForSelectedTodos(null)
+                showBatchReminderDialog = false
+            }
+        )
+    }
+
     // 分类管理全屏页面
     if (showCategoryManage) {
         CategoryManageScreen(
@@ -233,27 +262,53 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         Scaffold(
             modifier = modifier,
             topBar = {
-                MainTopBar(
-                    title = title,
-                    itemCount = itemCount,
-                    showArrow = hasCategoryDropdown,
-                    isDropdownOpen = showCategoryDropdown,
-                    onTitleClick = {
-                        if (hasCategoryDropdown) showCategoryDropdown = !showCategoryDropdown
-                    },
-                    onAvatarClick = { scope.launch { drawerState.open() } },
-                    onSearchClick = {},
-                    onMenuClick = {}
-                )
+                if (currentDestination == AppDestination.Todo && todoSelectionMode) {
+                    TodoSelectionTopBar(
+                        selectedCount = selectedTodoIds.size,
+                        allSelected = allFilteredTodosSelected,
+                        onCancel = { todoViewModel.clearSelection() },
+                        onSelectAllToggle = {
+                            if (allFilteredTodosSelected) {
+                                todoViewModel.clearSelection()
+                            } else {
+                                todoViewModel.selectAllFilteredTodos()
+                            }
+                        }
+                    )
+                } else {
+                    MainTopBar(
+                        title = title,
+                        itemCount = itemCount,
+                        showArrow = hasCategoryDropdown,
+                        isDropdownOpen = showCategoryDropdown,
+                        onTitleClick = {
+                            if (hasCategoryDropdown) showCategoryDropdown = !showCategoryDropdown
+                        },
+                        onAvatarClick = { scope.launch { drawerState.open() } },
+                        onSearchClick = {},
+                        onMenuClick = {}
+                    )
+                }
             },
             bottomBar = {
-                BottomNavBar(
-                    currentDestination = currentDestination,
-                    onDestinationSelected = {
-                        if (it != currentDestination) showCategoryDropdown = false
-                        currentDestination = it
-                    }
-                )
+                if (currentDestination == AppDestination.Todo && todoSelectionMode) {
+                    TodoSelectionBottomBar(
+                        onPriorityClick = { todoViewModel.applyPriorityToSelectedTodos() },
+                        onReminderClick = { showBatchReminderDialog = true },
+                        onDeleteClick = { todoViewModel.deleteSelectedTodos() }
+                    )
+                } else {
+                    BottomNavBar(
+                        currentDestination = currentDestination,
+                        onDestinationSelected = {
+                            if (currentDestination == AppDestination.Todo && it != currentDestination) {
+                                todoViewModel.clearSelection()
+                            }
+                            if (it != currentDestination) showCategoryDropdown = false
+                            currentDestination = it
+                        }
+                    )
+                }
             },
             containerColor = Color.White
         ) { innerPadding ->
@@ -284,7 +339,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     }
                 }
 
-                if (hasCategoryDropdown && showCategoryDropdown) {
+                if (hasCategoryDropdown && showCategoryDropdown && !(currentDestination == AppDestination.Todo && todoSelectionMode)) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -297,7 +352,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     )
                 }
 
-                if (hasCategoryDropdown) {
+                if (hasCategoryDropdown && !(currentDestination == AppDestination.Todo && todoSelectionMode)) {
                     CategoryDropdown(
                         visible = showCategoryDropdown,
                         categories = categories,
@@ -428,6 +483,101 @@ private fun AvatarButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             contentDescription = "用户头像",
             tint = Color(0xFF9E9E9E),
             modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+@Composable
+private fun TodoSelectionTopBar(
+    selectedCount: Int,
+    allSelected: Boolean,
+    onCancel: () -> Unit,
+    onSelectAllToggle: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .statusBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 10.dp)
+    ) {
+        TextButton(
+            onClick = onCancel,
+            modifier = Modifier.align(Alignment.CenterStart)
+        ) {
+            Text(text = "取消", fontSize = 18.sp, color = Color(0xFF1976D2))
+        }
+        Text(
+            text = "已选择 ${selectedCount} 项",
+            modifier = Modifier.align(Alignment.Center),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            fontSize = 18.sp,
+            color = Color(0xFF212121),
+            fontWeight = FontWeight.Medium
+        )
+        TextButton(
+            onClick = onSelectAllToggle,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        ) {
+            Text(text = if (allSelected) "取消全选" else "全选", fontSize = 18.sp, color = Color(0xFF1976D2))
+        }
+    }
+}
+
+@Composable
+private fun TodoSelectionBottomBar(
+    onPriorityClick: () -> Unit,
+    onReminderClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TodoSelectionAction(
+            icon = Icons.Outlined.Flag,
+            label = "优先级",
+            onClick = onPriorityClick
+        )
+        TodoSelectionAction(
+            icon = Icons.Outlined.NotificationsNone,
+            label = "提醒",
+            onClick = onReminderClick
+        )
+        TodoSelectionAction(
+            icon = Icons.Outlined.Delete,
+            label = "删除",
+            onClick = onDeleteClick
+        )
+    }
+}
+
+@Composable
+private fun TodoSelectionAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = Color(0xFF212121),
+            modifier = Modifier.size(28.dp)
+        )
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            color = Color(0xFF212121),
+            modifier = Modifier.padding(top = 6.dp)
         )
     }
 }
