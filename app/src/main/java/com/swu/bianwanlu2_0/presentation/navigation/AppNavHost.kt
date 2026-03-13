@@ -1,4 +1,4 @@
-package com.swu.bianwanlu2_0.presentation.navigation
+﻿package com.swu.bianwanlu2_0.presentation.navigation
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -32,6 +32,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -67,10 +68,15 @@ import com.swu.bianwanlu2_0.presentation.screens.notes.AddNoteScreen
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteListScreen
 import com.swu.bianwanlu2_0.presentation.screens.notes.NoteViewModel
 import com.swu.bianwanlu2_0.presentation.screens.profile.AboutBianwanluScreen
+import com.swu.bianwanlu2_0.presentation.screens.profile.AccountViewModel
+import com.swu.bianwanlu2_0.presentation.screens.profile.AuthMode
+import com.swu.bianwanlu2_0.presentation.screens.profile.AuthScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.DataAndSyncScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.GeneralSettingsScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.MyMenuAction
 import com.swu.bianwanlu2_0.presentation.screens.profile.MyScreen
+import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileAvatarImage
+import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileInfoScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.ReminderSettingsScreen
 import com.swu.bianwanlu2_0.presentation.screens.timeline.TimelineScreen
 import com.swu.bianwanlu2_0.data.local.entity.Note
@@ -79,11 +85,14 @@ import com.swu.bianwanlu2_0.presentation.screens.todo.AddTodoScreen
 import com.swu.bianwanlu2_0.presentation.screens.todo.TodoListScreen
 import com.swu.bianwanlu2_0.presentation.screens.todo.TodoViewModel
 import com.swu.bianwanlu2_0.ui.theme.Bianwanlu2_0Theme
+import com.swu.bianwanlu2_0.ui.theme.LocalAppIconTint
 import com.swu.bianwanlu2_0.ui.theme.NavUnselected
 import kotlinx.coroutines.launch
 
 private enum class MyPageDestination {
     Root,
+    Profile,
+    Auth,
     CategoryManage,
     ReminderSettings,
     DataAndSync,
@@ -103,6 +112,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     val noteViewModel: NoteViewModel = hiltViewModel()
     val todoViewModel: TodoViewModel = hiltViewModel()
     val categoryViewModel: CategoryViewModel = hiltViewModel()
+    val accountViewModel: AccountViewModel = hiltViewModel()
 
     val noteCount by noteViewModel.noteCount.collectAsStateWithLifecycle()
     val todoCount by todoViewModel.todoCount.collectAsStateWithLifecycle()
@@ -119,6 +129,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     val selectedNoteIds by noteViewModel.selectedNoteIds.collectAsStateWithLifecycle()
     val selectedNotes by noteViewModel.selectedNotes.collectAsStateWithLifecycle()
     val filteredNotes by noteViewModel.filteredNotes.collectAsStateWithLifecycle()
+    val accountState by accountViewModel.uiState.collectAsStateWithLifecycle()
     val todoSelectionMode by todoViewModel.isSelectionMode.collectAsStateWithLifecycle()
     val selectedTodoIds by todoViewModel.selectedTodoIds.collectAsStateWithLifecycle()
     val selectedTodos by todoViewModel.selectedTodos.collectAsStateWithLifecycle()
@@ -167,25 +178,87 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     val allFilteredTodosSelected =
         filteredTodos.isNotEmpty() && filteredTodos.all { it.id in selectedTodoIds }
 
+    if (!accountState.hasSeenAuthChoice) {
+        AuthScreen(
+            initialMode = if (accountState.hasLocalAccount) AuthMode.Login else AuthMode.Register,
+            allowSkip = true,
+            onBack = null,
+            onSkip = { accountViewModel.skipLogin() },
+            onLogin = { account, password -> accountViewModel.login(account, password) },
+            onRegister = { account, password -> accountViewModel.register(account, password) },
+            onAuthSuccess = {},
+        )
+        return
+    }
+
     if (showMyPage) {
         when (myPageDestination) {
             MyPageDestination.Root -> {
                 MyScreen(
+                    displayName = accountState.displayName,
+                    subtitle = if (accountState.isLoggedIn) "点击查看和修改个人信息" else "点击登录或完善个人信息",
+                    avatarUri = accountState.avatarUri,
                     onBack = {
                         showContactDialog = false
                         myPageDestination = MyPageDestination.Root
                         showMyPage = false
                     },
+                    onProfileClick = {
+                        showContactDialog = false
+                        myPageDestination = if (accountState.isLoggedIn) {
+                            MyPageDestination.Profile
+                        } else {
+                            MyPageDestination.Auth
+                        }
+                    },
                     onMenuClick = { action ->
                         when (action) {
-                            MyMenuAction.CategoryManage -> myPageDestination = MyPageDestination.CategoryManage
-                            MyMenuAction.ReminderSettings -> myPageDestination = MyPageDestination.ReminderSettings
-                            MyMenuAction.DataAndSync -> myPageDestination = MyPageDestination.DataAndSync
-                            MyMenuAction.GeneralSettings -> myPageDestination = MyPageDestination.GeneralSettings
+                            MyMenuAction.CategoryManage -> {
+                                showContactDialog = false
+                                myPageDestination = MyPageDestination.CategoryManage
+                            }
+                            MyMenuAction.ReminderSettings -> {
+                                showContactDialog = false
+                                myPageDestination = MyPageDestination.ReminderSettings
+                            }
+                            MyMenuAction.DataAndSync -> {
+                                showContactDialog = false
+                                myPageDestination = MyPageDestination.DataAndSync
+                            }
+                            MyMenuAction.GeneralSettings -> {
+                                showContactDialog = false
+                                myPageDestination = MyPageDestination.GeneralSettings
+                            }
                             MyMenuAction.ContactUs -> showContactDialog = true
-                            MyMenuAction.About -> myPageDestination = MyPageDestination.About
+                            MyMenuAction.About -> {
+                                showContactDialog = false
+                                myPageDestination = MyPageDestination.About
+                            }
                         }
                     }
+                )
+            }
+            MyPageDestination.Profile -> {
+                ProfileInfoScreen(
+                    state = accountState,
+                    onBack = { myPageDestination = MyPageDestination.Root },
+                    onOpenAuth = { myPageDestination = MyPageDestination.Auth },
+                    onNicknameConfirm = { value -> accountViewModel.updateNickname(value) },
+                    onAccountConfirm = { value -> accountViewModel.updateAccount(value) },
+                    onAvatarChange = { uri -> accountViewModel.updateAvatar(uri) },
+                    onLogout = { accountViewModel.logout() },
+                    onCancelAccount = { accountViewModel.cancelAccount() },
+                )
+            }
+            MyPageDestination.Auth -> {
+                AuthScreen(
+                    initialMode = if (accountState.hasLocalAccount) AuthMode.Login else AuthMode.Register,
+                    allowSkip = false,
+                    onBack = { myPageDestination = MyPageDestination.Profile },
+                    onSkip = {},
+                    onLogin = { account, password -> accountViewModel.login(account, password) },
+                    onRegister = { account, password -> accountViewModel.register(account, password) },
+                    onAuthSuccess = { myPageDestination = MyPageDestination.Profile },
                 )
             }
             MyPageDestination.CategoryManage -> {
@@ -384,6 +457,9 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 noteCategories = noteCategories,
                 todoCategories = todoCategories,
                 selectedCategory = selectedCategory,
+                userDisplayName = accountState.displayName,
+                userSecondaryText = accountState.secondaryText,
+                avatarUri = accountState.avatarUri,
                 onCategorySelect = { cat ->
                     when (cat.type) {
                         CategoryType.NOTE -> {
@@ -447,6 +523,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                         itemCount = itemCount,
                         showArrow = hasCategoryDropdown,
                         isDropdownOpen = showCategoryDropdown,
+                        avatarUri = accountState.avatarUri,
                         onTitleClick = {
                             if (hasCategoryDropdown) showCategoryDropdown = !showCategoryDropdown
                         },
@@ -499,7 +576,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     )
                 }
             },
-            containerColor = Color.White
+            containerColor = MaterialTheme.colorScheme.background
         ) { innerPadding ->
             Box(
                 modifier = Modifier
@@ -588,20 +665,24 @@ private fun MainTopBar(
     itemCount: Int,
     showArrow: Boolean,
     isDropdownOpen: Boolean,
+    avatarUri: String?,
     onTitleClick: () -> Unit,
     onAvatarClick: () -> Unit,
     onSearchClick: () -> Unit,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .padding(horizontal = 4.dp)
     ) {
         AvatarButton(
+            avatarUri = avatarUri,
             onClick = onAvatarClick,
             modifier = Modifier
                 .align(Alignment.CenterStart)
@@ -625,13 +706,13 @@ private fun MainTopBar(
                         text = title,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Normal,
-                        color = Color(0xFF212121)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     if (showArrow) {
                         Icon(
                             imageVector = if (isDropdownOpen) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
                             contentDescription = "展开分类",
-                            tint = Color(0xFF757575),
+                            tint = iconTint,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -647,31 +728,34 @@ private fun MainTopBar(
 
         Row(modifier = Modifier.align(Alignment.CenterEnd)) {
             IconButton(onClick = onSearchClick) {
-                Icon(Icons.Outlined.Search, "搜索", tint = Color(0xFF424242))
+                Icon(Icons.Outlined.Search, "搜索", tint = iconTint)
             }
             IconButton(onClick = onMenuClick) {
-                Icon(Icons.Outlined.MoreVert, "更多", tint = Color(0xFF424242))
+                Icon(Icons.Outlined.MoreVert, "更多", tint = iconTint)
             }
         }
     }
 }
 
 @Composable
-private fun AvatarButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun AvatarButton(
+    avatarUri: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(36.dp)
             .clip(CircleShape)
             .border(1.dp, Color(0xFFE0E0E0), CircleShape)
-            .background(Color(0xFFF5F5F5))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
     ) {
-        Icon(
-            Icons.Outlined.Person,
-            contentDescription = "用户头像",
-            tint = Color(0xFF9E9E9E),
-            modifier = Modifier.size(22.dp)
+        ProfileAvatarImage(
+            avatarUri = avatarUri,
+            modifier = Modifier.fillMaxSize(),
+            iconSize = 22.dp,
         )
     }
 }
@@ -683,10 +767,12 @@ private fun TodoSelectionTopBar(
     onCancel: () -> Unit,
     onSelectAllToggle: () -> Unit
 ) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .padding(horizontal = 8.dp, vertical = 10.dp)
     ) {
@@ -694,7 +780,7 @@ private fun TodoSelectionTopBar(
             onClick = onCancel,
             modifier = Modifier.align(Alignment.CenterStart)
         ) {
-            Text(text = "取消", fontSize = 18.sp, color = Color(0xFF1976D2))
+            Text(text = "取消", fontSize = 18.sp, color = primaryColor)
         }
         Text(
             text = "已选择 ${selectedCount} 项",
@@ -708,7 +794,7 @@ private fun TodoSelectionTopBar(
             onClick = onSelectAllToggle,
             modifier = Modifier.align(Alignment.CenterEnd)
         ) {
-            Text(text = if (allSelected) "取消全选" else "全选", fontSize = 18.sp, color = Color(0xFF1976D2))
+            Text(text = if (allSelected) "取消全选" else "全选", fontSize = 18.sp, color = primaryColor)
         }
     }
 }
@@ -722,7 +808,7 @@ private fun TodoSelectionBottomBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.surface)
             .navigationBarsPadding()
             .padding(horizontal = 24.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceAround,
@@ -752,6 +838,8 @@ private fun TodoSelectionAction(
     label: String,
     onClick: () -> Unit
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.clickable(onClick = onClick)
@@ -759,7 +847,7 @@ private fun TodoSelectionAction(
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = Color(0xFF212121),
+            tint = iconTint,
             modifier = Modifier.size(28.dp)
         )
         Text(
@@ -778,8 +866,13 @@ private fun MainTopBarPreview() {
         MainTopBar(
             title = "笔记", itemCount = 3,
             showArrow = true, isDropdownOpen = false,
+            avatarUri = null,
             onTitleClick = {}, onAvatarClick = {},
             onSearchClick = {}, onMenuClick = {}
         )
     }
 }
+
+
+
+

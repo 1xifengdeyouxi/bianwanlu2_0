@@ -39,6 +39,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -75,6 +76,8 @@ import com.swu.bianwanlu2_0.feature.todo.R
 import com.swu.bianwanlu2_0.presentation.components.SwipeRevealDeleteItem
 import com.swu.bianwanlu2_0.ui.theme.EmptyIconColor
 import com.swu.bianwanlu2_0.ui.theme.EmptyTextColor
+import com.swu.bianwanlu2_0.ui.theme.LocalAppIconTint
+import com.swu.bianwanlu2_0.ui.theme.LocalAppListContentMaxLines
 import com.swu.bianwanlu2_0.ui.theme.NoteRed
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -93,6 +96,7 @@ fun TodoListScreen(
     val currentFilter by viewModel.currentFilter.collectAsStateWithLifecycle()
     val isSelectionMode by viewModel.isSelectionMode.collectAsStateWithLifecycle()
     val selectedTodoIds by viewModel.selectedTodoIds.collectAsStateWithLifecycle()
+    val accentColor = LocalAppIconTint.current
     var openedTodoId by remember { mutableStateOf<Long?>(null) }
 
     Box(
@@ -150,7 +154,7 @@ fun TodoListScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 24.dp, bottom = 24.dp),
-                containerColor = NoteRed
+                containerColor = accentColor
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
@@ -576,6 +580,8 @@ private fun TodoCard(
     onLongDragEnd: (() -> Unit)? = null
 ) {
     val isCompleted = todo.status == TodoStatus.COMPLETED
+    val accentColor = LocalAppIconTint.current
+    val listContentMaxLines = LocalAppListContentMaxLines.current
     val bgColor = if (isCompleted) Color(0xFFF0F0F0) else Color(todo.cardColor)
     val now = System.currentTimeMillis()
     val reminderTime = todo.reminderTime
@@ -659,7 +665,7 @@ private fun TodoCard(
                     text = todo.title,
                     fontWeight = FontWeight.Normal,
                     fontSize = 16.sp,
-                    maxLines = 2,
+                    maxLines = listContentMaxLines,
                     overflow = TextOverflow.Ellipsis,
                     color = if (isCompleted) Color(0xFFBDBDBD) else Color(0xFF212121),
                     textDecoration = if (isCompleted) TextDecoration.LineThrough else TextDecoration.None
@@ -678,7 +684,7 @@ private fun TodoCard(
                 Icon(
                     imageVector = Icons.Outlined.Flag,
                     contentDescription = "高优先级",
-                    tint = if (isCompleted) Color(0xFFBDBDBD) else NoteRed,
+                    tint = if (isCompleted) Color(0xFFBDBDBD) else accentColor,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
@@ -729,10 +735,12 @@ private fun DragHandle(
     onLongDrag: ((Float) -> Unit)?,
     onLongDragEnd: (() -> Unit)?
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Icon(
         imageVector = Icons.Outlined.DragHandle,
         contentDescription = "拖动排序",
-        tint = Color(0xFFD2CCBC),
+        tint = iconTint,
         modifier = Modifier
             .size(24.dp)
             .combinedClickable(
@@ -766,6 +774,8 @@ private fun SelectionBox(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val accentColor = MaterialTheme.colorScheme.primary
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -773,7 +783,7 @@ private fun SelectionBox(
             .clip(RoundedCornerShape(8.dp))
             .then(
                 if (selected) {
-                    Modifier.background(Color(0xFF1976D2), RoundedCornerShape(8.dp))
+                    Modifier.background(accentColor, RoundedCornerShape(8.dp))
                 } else {
                     Modifier.border(1.5.dp, Color(0xFFC7C0B0), RoundedCornerShape(8.dp))
                 }

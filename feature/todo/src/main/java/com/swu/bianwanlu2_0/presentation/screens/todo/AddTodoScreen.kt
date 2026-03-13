@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.presentation.components.cardColorOptions
 import com.swu.bianwanlu2_0.presentation.components.ReminderDialog
+import com.swu.bianwanlu2_0.ui.theme.LocalAppIconTint
 import com.swu.bianwanlu2_0.ui.theme.NoteRed
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -56,6 +58,8 @@ fun AddTodoScreen(
     existingTodo: Todo? = null,
     modifier: Modifier = Modifier
 ) {
+    val accentColor = MaterialTheme.colorScheme.primary
+    val iconTint = LocalAppIconTint.current
     var title by remember { mutableStateOf(existingTodo?.title ?: "") }
     var reminderTime by remember { mutableStateOf(existingTodo?.reminderTime) }
     var isPriority by remember { mutableStateOf(existingTodo?.isPriority ?: false) }
@@ -68,7 +72,7 @@ fun AddTodoScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F5))
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
         AddTodoTopBar(
@@ -104,7 +108,7 @@ fun AddTodoScreen(
                         color = Color(0xFF212121),
                         lineHeight = 24.sp
                     ),
-                    cursorBrush = SolidColor(Color(0xFF1976D2)),
+                    cursorBrush = SolidColor(accentColor),
                     decorationBox = { innerTextField ->
                         Box {
                             if (title.isEmpty()) {
@@ -138,7 +142,7 @@ fun AddTodoScreen(
                     Icon(
                         imageVector = Icons.Outlined.CalendarMonth,
                         contentDescription = "设置提醒",
-                        tint = if (reminderTime != null) Color(0xFF1976D2) else Color(0xFF757575),
+                        tint = if (reminderTime != null) accentColor else Color(0xFF757575),
                         modifier = Modifier
                             .size(24.dp)
                             .clickable(
@@ -150,7 +154,7 @@ fun AddTodoScreen(
                     Icon(
                         imageVector = Icons.Outlined.Flag,
                         contentDescription = "设置优先级",
-                        tint = if (isPriority) NoteRed else Color(0xFF757575),
+                        tint = if (isPriority) iconTint else Color(0xFF757575),
                         modifier = Modifier
                             .size(24.dp)
                             .clickable(
@@ -211,6 +215,8 @@ private fun AddTodoTopBar(
     onConfirm: () -> Unit,
     confirmEnabled: Boolean
 ) {
+    val accentColor = MaterialTheme.colorScheme.primary
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -220,7 +226,7 @@ private fun AddTodoTopBar(
         Text(
             text = "取消",
             fontSize = 16.sp,
-            color = Color(0xFF1976D2),
+            color = accentColor,
             modifier = Modifier.clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -240,7 +246,7 @@ private fun AddTodoTopBar(
         Text(
             text = "完成",
             fontSize = 16.sp,
-            color = if (confirmEnabled) Color(0xFF1976D2) else Color(0xFFBDBDBD),
+            color = if (confirmEnabled) accentColor else Color(0xFFBDBDBD),
             modifier = Modifier.clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -257,6 +263,8 @@ private fun ColorPickerRow(
     onColorSelected: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -270,7 +278,7 @@ private fun ColorPickerRow(
                     .background(Color(color))
                     .then(
                         if (selectedColor == color) {
-                            Modifier.border(2.5.dp, NoteRed, CircleShape)
+                            Modifier.border(2.5.dp, iconTint, CircleShape)
                         } else {
                             Modifier.border(1.dp, Color(0xFFE0E0E0), CircleShape)
                         }

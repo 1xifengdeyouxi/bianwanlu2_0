@@ -36,6 +36,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,6 +72,8 @@ import com.swu.bianwanlu2_0.feature.notes.R
 import com.swu.bianwanlu2_0.presentation.components.SwipeRevealDeleteItem
 import com.swu.bianwanlu2_0.ui.theme.EmptyIconColor
 import com.swu.bianwanlu2_0.ui.theme.EmptyTextColor
+import com.swu.bianwanlu2_0.ui.theme.LocalAppIconTint
+import com.swu.bianwanlu2_0.ui.theme.LocalAppListContentMaxLines
 import com.swu.bianwanlu2_0.ui.theme.NoteRed
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -89,6 +92,7 @@ fun NoteListScreen(
     val currentFilter by viewModel.currentFilter.collectAsStateWithLifecycle()
     val isSelectionMode by viewModel.isSelectionMode.collectAsStateWithLifecycle()
     val selectedNoteIds by viewModel.selectedNoteIds.collectAsStateWithLifecycle()
+    val accentColor = LocalAppIconTint.current
     var openedNoteId by remember { mutableStateOf<Long?>(null) }
 
     Box(
@@ -145,7 +149,7 @@ fun NoteListScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 24.dp, bottom = 24.dp),
-                containerColor = NoteRed
+                containerColor = accentColor
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
@@ -480,6 +484,8 @@ private fun NoteCard(
     onLongDragEnd: (() -> Unit)? = null
 ) {
     val isCompleted = note.status == NoteStatus.COMPLETED
+    val accentColor = LocalAppIconTint.current
+    val listContentMaxLines = LocalAppListContentMaxLines.current
     val showPriority = note.isPriority && !isCompleted
     val showTitle = note.title.isNotBlank()
     val hasContent = note.content.isNotBlank()
@@ -489,6 +495,11 @@ private fun NoteCard(
         reminderTime < System.currentTimeMillis()
     val reminderText = reminderTime?.let { formatReminderDisplay(it, isExpired) }
     val centeredContentMode = !showTitle && !showPriority && reminderText == null && hasContent
+    val contentMaxLines = if (showTitle) {
+        (listContentMaxLines - 1).coerceAtLeast(1)
+    } else {
+        listContentMaxLines
+    }
 
     Card(
         modifier = modifier
@@ -575,7 +586,7 @@ private fun NoteCard(
                             Icon(
                                 imageVector = Icons.Outlined.Flag,
                                 contentDescription = "高优先级",
-                                tint = NoteRed,
+                                tint = accentColor,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -593,7 +604,7 @@ private fun NoteCard(
                         text = note.content,
                         fontSize = if (showTitle) 14.sp else 15.sp,
                         color = if (isCompleted) Color(0xFFBDBDBD) else Color(note.textColor),
-                        maxLines = if (centeredContentMode) 3 else 2,
+                        maxLines = if (centeredContentMode) listContentMaxLines else contentMaxLines,
                         overflow = TextOverflow.Ellipsis,
                         textDecoration = if (isCompleted) TextDecoration.LineThrough else TextDecoration.None
                     )
@@ -629,10 +640,12 @@ private fun DragHandle(
     onLongDrag: ((Float) -> Unit)?,
     onLongDragEnd: (() -> Unit)?
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Icon(
         imageVector = Icons.Outlined.DragHandle,
         contentDescription = "拖动排序",
-        tint = Color(0xFFD2CCBC),
+        tint = iconTint,
         modifier = Modifier
             .size(24.dp)
             .combinedClickable(
@@ -666,6 +679,8 @@ private fun SelectionBox(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val accentColor = MaterialTheme.colorScheme.primary
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -673,7 +688,7 @@ private fun SelectionBox(
             .clip(RoundedCornerShape(8.dp))
             .then(
                 if (selected) {
-                    Modifier.background(Color(0xFF1976D2), RoundedCornerShape(8.dp))
+                    Modifier.background(accentColor, RoundedCornerShape(8.dp))
                 } else {
                     Modifier.border(1.5.dp, Color(0xFFC7C0B0), RoundedCornerShape(8.dp))
                 }

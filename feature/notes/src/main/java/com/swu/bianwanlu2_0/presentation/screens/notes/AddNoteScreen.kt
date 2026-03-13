@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.presentation.components.cardColorOptions
 import com.swu.bianwanlu2_0.presentation.components.ReminderDialog
+import com.swu.bianwanlu2_0.ui.theme.LocalAppIconTint
 import com.swu.bianwanlu2_0.ui.theme.NoteRed
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -85,6 +87,8 @@ fun AddNoteScreen(
     existingNote: Note? = null,
     modifier: Modifier = Modifier
 ) {
+    val accentColor = MaterialTheme.colorScheme.primary
+    val iconTint = LocalAppIconTint.current
     var title by remember { mutableStateOf(existingNote?.title ?: "") }
     var content by remember { mutableStateOf(existingNote?.content ?: "") }
     var reminderTime by remember { mutableStateOf(existingNote?.reminderTime) }
@@ -115,7 +119,7 @@ fun AddNoteScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F5))
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
         Column(
@@ -164,7 +168,7 @@ fun AddNoteScreen(
                             color = Color(0xFF212121)
                         ),
                         singleLine = true,
-                        cursorBrush = SolidColor(Color(0xFF1976D2)),
+                        cursorBrush = SolidColor(accentColor),
                         decorationBox = { innerTextField ->
                             Box {
                                 if (title.isEmpty()) {
@@ -199,7 +203,7 @@ fun AddNoteScreen(
                             color = Color(textColor),
                             lineHeight = 24.sp
                         ),
-                        cursorBrush = SolidColor(Color(0xFF1976D2)),
+                        cursorBrush = SolidColor(accentColor),
                         decorationBox = { innerTextField ->
                             Box {
                                 if (content.isEmpty()) {
@@ -242,7 +246,7 @@ fun AddNoteScreen(
                         Icon(
                             imageVector = Icons.Outlined.CalendarMonth,
                             contentDescription = "设置提醒",
-                            tint = if (reminderTime != null) Color(0xFF1976D2) else Color(0xFF757575),
+                            tint = if (reminderTime != null) accentColor else Color(0xFF757575),
                             modifier = Modifier
                                 .size(24.dp)
                                 .clickable(
@@ -255,7 +259,7 @@ fun AddNoteScreen(
                         Icon(
                             imageVector = Icons.Outlined.Flag,
                             contentDescription = "设置优先级",
-                            tint = if (isPriority) NoteRed else Color(0xFF757575),
+                            tint = if (isPriority) iconTint else Color(0xFF757575),
                             modifier = Modifier
                                 .size(24.dp)
                                 .clickable(
@@ -372,6 +376,8 @@ private fun AddNoteTopBar(
     onConfirm: () -> Unit,
     confirmEnabled: Boolean
 ) {
+    val accentColor = MaterialTheme.colorScheme.primary
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -381,7 +387,7 @@ private fun AddNoteTopBar(
         Text(
             text = "取消",
             fontSize = 16.sp,
-            color = Color(0xFF1976D2),
+            color = accentColor,
             modifier = Modifier.clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -401,7 +407,7 @@ private fun AddNoteTopBar(
         Text(
             text = "完成",
             fontSize = 16.sp,
-            color = if (confirmEnabled) Color(0xFF1976D2) else Color(0xFFBDBDBD),
+            color = if (confirmEnabled) accentColor else Color(0xFFBDBDBD),
             modifier = Modifier.clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -418,6 +424,8 @@ private fun NoteCardColorPickerRow(
     onColorSelected: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -431,7 +439,7 @@ private fun NoteCardColorPickerRow(
                     .background(Color(color))
                     .then(
                         if (selectedColor == color) {
-                            Modifier.border(2.dp, NoteRed, CircleShape)
+                            Modifier.border(2.dp, iconTint, CircleShape)
                         } else {
                             Modifier.border(1.dp, Color(0xFFE0E0E0), CircleShape)
                         }
@@ -448,6 +456,8 @@ private fun NoteTextColorPickerRow(
     onColorSelected: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Row(
         modifier = modifier
             .background(Color.White)
@@ -463,7 +473,7 @@ private fun NoteTextColorPickerRow(
                     .background(Color(color))
                     .then(
                         if (selectedColor == color) {
-                            Modifier.border(2.dp, NoteRed, CircleShape)
+                            Modifier.border(2.dp, iconTint, CircleShape)
                         } else {
                             Modifier.border(1.dp, Color(0xFFE0E0E0), CircleShape)
                         }

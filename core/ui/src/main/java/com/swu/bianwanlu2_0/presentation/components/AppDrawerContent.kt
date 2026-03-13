@@ -1,8 +1,13 @@
-package com.swu.bianwanlu2_0.presentation.components
+﻿package com.swu.bianwanlu2_0.presentation.components
 
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -45,7 +51,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,6 +66,9 @@ fun AppDrawerContent(
     noteCategories: List<Category>,
     todoCategories: List<Category>,
     selectedCategory: Category?,
+    userDisplayName: String,
+    userSecondaryText: String,
+    avatarUri: String?,
     onCategorySelect: (Category) -> Unit,
     onMyClick: () -> Unit,
     onSyncClick: () -> Unit,
@@ -73,7 +85,7 @@ fun AppDrawerContent(
             .background(Color.White)
     ) {
         // 顶部用户区域
-        DrawerHeader()
+        DrawerHeader(displayName = userDisplayName, secondaryText = userSecondaryText, avatarUri = avatarUri, onClick = onMyClick)
 
         // 分类列表
         LazyColumn(
@@ -152,7 +164,12 @@ fun AppDrawerContent(
 }
 
 @Composable
-private fun DrawerHeader() {
+private fun DrawerHeader(
+    displayName: String,
+    secondaryText: String,
+    avatarUri: String?,
+    onClick: () -> Unit,
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -166,17 +183,23 @@ private fun DrawerHeader() {
             .padding(horizontal = 20.dp)
     ) {
         Column(
-            modifier = Modifier.align(Alignment.BottomStart),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
             verticalArrangement = Arrangement.Bottom
         ) {
             Text(
-                text = "Hi,上午好",
+                text = secondaryText,
                 fontSize = 13.sp,
                 color = Color(0xFF9E9E9E)
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "昵称未设置",
+                text = displayName,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF212121)
@@ -193,10 +216,61 @@ private fun DrawerHeader() {
                 .clip(CircleShape)
                 .border(2.dp, Color(0xFFE0E0E0), CircleShape)
                 .background(Color(0xFFEEEEEE))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                )
         ) {
+            DrawerAvatarImage(
+                avatarUri = avatarUri,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawerAvatarImage(
+    avatarUri: String?,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val imageBitmap = remember(avatarUri) {
+        avatarUri
+            ?.takeIf { it.isNotBlank() }
+            ?.let { value ->
+                runCatching {
+                    val uri = Uri.parse(value)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        ImageDecoder.decodeBitmap(
+                            ImageDecoder.createSource(context.contentResolver, uri),
+                        ).asImageBitmap()
+                    } else {
+                        @Suppress("DEPRECATION")
+                        MediaStore.Images.Media.getBitmap(context.contentResolver, uri).asImageBitmap()
+                    }
+                }.getOrNull()
+            }
+    }
+
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color(0xFFEEEEEE)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (imageBitmap != null) {
+            Image(
+                bitmap = imageBitmap,
+                contentDescription = "??",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
             Icon(
                 Icons.Outlined.Person,
-                contentDescription = "头像",
+                contentDescription = "??",
                 tint = Color(0xFFBDBDBD),
                 modifier = Modifier.size(36.dp)
             )
@@ -339,3 +413,4 @@ private fun DrawerBottomItem(
         Text(text = label, fontSize = 11.sp, color = Color(0xFF757575))
     }
 }
+
