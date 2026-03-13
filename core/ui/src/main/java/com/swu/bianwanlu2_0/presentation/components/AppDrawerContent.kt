@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -59,7 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swu.bianwanlu2_0.data.local.entity.Category
-import com.swu.bianwanlu2_0.ui.theme.NoteRed
+import com.swu.bianwanlu2_0.ui.theme.LocalAppIconTint
 
 @Composable
 fun AppDrawerContent(
@@ -82,7 +83,7 @@ fun AppDrawerContent(
         modifier = modifier
             .fillMaxHeight()
             .width(300.dp)
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.surface)
     ) {
         // 顶部用户区域
         DrawerHeader(displayName = userDisplayName, secondaryText = userSecondaryText, avatarUri = avatarUri, onClick = onMyClick)
@@ -115,7 +116,7 @@ fun AppDrawerContent(
                         Text(
                             text = "暂无笔记分类",
                             fontSize = 13.sp,
-                            color = Color(0xFFBDBDBD),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 52.dp, top = 8.dp, bottom = 12.dp)
                         )
                     }
@@ -144,7 +145,7 @@ fun AppDrawerContent(
                         Text(
                             text = "暂无待办分类",
                             fontSize = 13.sp,
-                            color = Color(0xFFBDBDBD),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 52.dp, top = 8.dp, bottom = 12.dp)
                         )
                     }
@@ -152,7 +153,7 @@ fun AppDrawerContent(
             }
         }
 
-        HorizontalDivider(color = Color(0xFFF0F0F0))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
         // 底部按钮行：我的 | 同步 | 小游戏
         DrawerBottomBar(
@@ -176,7 +177,10 @@ private fun DrawerHeader(
             .height(160.dp)
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFFF5F5F5), Color.White)
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        MaterialTheme.colorScheme.surface,
+                    )
                 )
             )
             .statusBarsPadding()
@@ -195,14 +199,14 @@ private fun DrawerHeader(
             Text(
                 text = secondaryText,
                 fontSize = 13.sp,
-                color = Color(0xFF9E9E9E)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = displayName,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF212121)
+                color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -214,8 +218,8 @@ private fun DrawerHeader(
                 .align(Alignment.CenterEnd)
                 .size(64.dp)
                 .clip(CircleShape)
-                .border(2.dp, Color(0xFFE0E0E0), CircleShape)
-                .background(Color(0xFFEEEEEE))
+                .border(2.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -236,6 +240,7 @@ private fun DrawerAvatarImage(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val iconTint = LocalAppIconTint.current
     val imageBitmap = remember(avatarUri) {
         avatarUri
             ?.takeIf { it.isNotBlank() }
@@ -257,7 +262,7 @@ private fun DrawerAvatarImage(
     Box(
         modifier = modifier
             .clip(CircleShape)
-            .background(Color(0xFFEEEEEE)),
+            .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         if (imageBitmap != null) {
@@ -271,7 +276,7 @@ private fun DrawerAvatarImage(
             Icon(
                 Icons.Outlined.Person,
                 contentDescription = "??",
-                tint = Color(0xFFBDBDBD),
+                tint = iconTint.copy(alpha = 0.7f),
                 modifier = Modifier.size(36.dp)
             )
         }
@@ -284,6 +289,8 @@ private fun CategorySectionHeader(
     expanded: Boolean,
     onClick: () -> Unit
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -299,13 +306,13 @@ private fun CategorySectionHeader(
             text = title,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF424242),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f)
         )
         Icon(
             imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
             contentDescription = if (expanded) "收起" else "展开",
-            tint = Color(0xFF9E9E9E),
+            tint = iconTint.copy(alpha = 0.8f),
             modifier = Modifier.size(20.dp)
         )
     }
@@ -318,6 +325,8 @@ private fun DrawerCategoryItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -328,7 +337,7 @@ private fun DrawerCategoryItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (isSelected) NoteRed else Color(0xFF757575),
+            tint = if (isSelected) iconTint else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
@@ -336,14 +345,14 @@ private fun DrawerCategoryItem(
             text = category.name,
             fontSize = 15.sp,
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
-            color = if (isSelected) Color(0xFF212121) else Color(0xFF424242),
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
         if (isSelected) {
             Icon(
                 Icons.Default.Check,
                 contentDescription = "已选中",
-                tint = NoteRed,
+                tint = iconTint,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -387,6 +396,8 @@ private fun DrawerBottomItem(
     label: String,
     onClick: () -> Unit
 ) {
+    val iconTint = LocalAppIconTint.current
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.clickable(
@@ -400,17 +411,17 @@ private fun DrawerBottomItem(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFF5F5F5))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = Color(0xFF757575),
+                tint = iconTint,
                 modifier = Modifier.size(20.dp)
             )
         }
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = label, fontSize = 11.sp, color = Color(0xFF757575))
+        Text(text = label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
