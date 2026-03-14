@@ -5,11 +5,14 @@ import androidx.room.Room
 import com.swu.bianwanlu2_0.data.local.AppDatabase
 import com.swu.bianwanlu2_0.data.local.dao.CategoryDao
 import com.swu.bianwanlu2_0.data.local.dao.NoteDao
+import com.swu.bianwanlu2_0.data.local.dao.TimelineEventDao
 import com.swu.bianwanlu2_0.data.local.dao.TodoDao
 import com.swu.bianwanlu2_0.data.repository.CategoryRepository
 import com.swu.bianwanlu2_0.data.repository.CategoryRepositoryImpl
 import com.swu.bianwanlu2_0.data.repository.NoteRepository
 import com.swu.bianwanlu2_0.data.repository.NoteRepositoryImpl
+import com.swu.bianwanlu2_0.data.repository.TimelineEventRepository
+import com.swu.bianwanlu2_0.data.repository.TimelineEventRepositoryImpl
 import com.swu.bianwanlu2_0.data.repository.TodoRepository
 import com.swu.bianwanlu2_0.data.repository.TodoRepositoryImpl
 import dagger.Binds
@@ -33,7 +36,7 @@ object DatabaseModule {
             "bianwanlu.db"
         )
             .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
-            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8)
+            .addMigrations(AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -45,6 +48,9 @@ object DatabaseModule {
 
     @Provides
     fun provideCategoryDao(db: AppDatabase): CategoryDao = db.categoryDao()
+
+    @Provides
+    fun provideTimelineEventDao(db: AppDatabase): TimelineEventDao = db.timelineEventDao()
 }
 
 @Module
@@ -62,4 +68,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindCategoryRepository(impl: CategoryRepositoryImpl): CategoryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTimelineEventRepository(impl: TimelineEventRepositoryImpl): TimelineEventRepository
 }

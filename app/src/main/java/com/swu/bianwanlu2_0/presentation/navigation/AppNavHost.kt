@@ -1,9 +1,14 @@
 ﻿package com.swu.bianwanlu2_0.presentation.navigation
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +45,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,10 +81,11 @@ import com.swu.bianwanlu2_0.presentation.screens.profile.DataAndSyncScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.GeneralSettingsScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.MyMenuAction
 import com.swu.bianwanlu2_0.presentation.screens.profile.MyScreen
+import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileActionDialog
 import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileAvatarImage
 import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileInfoScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.ReminderSettingsScreen
-import com.swu.bianwanlu2_0.presentation.screens.timeline.TimelineScreen
+import com.swu.bianwanlu2_0.presentation.screens.timeline.MainTimelineScreen
 import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.presentation.screens.todo.AddTodoScreen
@@ -100,11 +107,55 @@ private enum class MyPageDestination {
     About,
 }
 
+private enum class NavigationMotionDirection {
+    Forward,
+    Backward,
+}
+
+private sealed interface HostScreen {
+    data object Main : HostScreen
+    data object AuthEntry : HostScreen
+    data class My(val destination: MyPageDestination) : HostScreen
+    data object AddNote : HostScreen
+    data class EditNote(val note: Note) : HostScreen
+    data object AddTodo : HostScreen
+    data class EditTodo(val todo: Todo) : HostScreen
+    data object CategoryManage : HostScreen
+}
+
+private fun createScreenTransition(direction: NavigationMotionDirection): ContentTransform {
+    val enterOffset: (Int) -> Int = { fullWidth ->
+        if (direction == NavigationMotionDirection.Forward) fullWidth / 3 else -fullWidth / 3
+    }
+    val exitOffset: (Int) -> Int = { fullWidth ->
+        if (direction == NavigationMotionDirection.Forward) -fullWidth / 5 else fullWidth / 5
+    }
+    return (
+        slideInHorizontally(
+            animationSpec = tween(durationMillis = 280),
+            initialOffsetX = enterOffset,
+        ) + fadeIn(animationSpec = tween(durationMillis = 280))
+        ).togetherWith(
+            slideOutHorizontally(
+                animationSpec = tween(durationMillis = 240),
+                targetOffsetX = exitOffset,
+            ) + fadeOut(animationSpec = tween(durationMillis = 220))
+        )
+}
+
+private fun appDestinationIndex(destination: AppDestination): Int = when (destination) {
+    AppDestination.Notes -> 0
+    AppDestination.Todo -> 1
+    AppDestination.Timeline -> 2
+    AppDestination.Calendar -> 3
+}
+
 @Composable
 fun AppNavHost(modifier: Modifier = Modifier) {
     var currentDestination by remember {
         mutableStateOf<AppDestination>(AppDestination.Notes)
     }
+    val mainDestinationStack = remember { mutableStateListOf<AppDestination>(AppDestination.Notes) }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -161,7 +212,8 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     var showCategoryDropdown by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showMyPage by remember { mutableStateOf(false) }
-    var myPageDestination by remember { mutableStateOf(MyPageDestination.Root) }
+    val myPageStack = remember { mutableStateListOf(MyPageDestination.Root) }
+    val myPageDestination = myPageStack.lastOrNull() ?: MyPageDestination.Root
     var showContactDialog by remember { mutableStateOf(false) }
     var showCategoryManage by remember { mutableStateOf(false) }
     var showAddNote by remember { mutableStateOf(false) }
@@ -172,77 +224,162 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     var showDeleteNotesConfirm by remember { mutableStateOf(false) }
     var showBatchTodoReminderDialog by remember { mutableStateOf(false) }
     var showDeleteTodosConfirm by remember { mutableStateOf(false) }
+    var hostMotionDirection by remember { mutableStateOf(NavigationMotionDirection.Forward) }
+    var mainMotionDirection by remember { mutableStateOf(NavigationMotionDirection.Forward) }
 
     val allFilteredNotesSelected =
         filteredNotes.isNotEmpty() && filteredNotes.all { it.id in selectedNoteIds }
     val allFilteredTodosSelected =
         filteredTodos.isNotEmpty() && filteredTodos.all { it.id in selectedTodoIds }
 
-    if (!accountState.hasSeenAuthChoice) {
-        AuthScreen(
-            initialMode = if (accountState.hasLocalAccount) AuthMode.Login else AuthMode.Register,
-            allowSkip = true,
-            onBack = null,
-            onSkip = { accountViewModel.skipLogin() },
-            onLogin = { account, password -> accountViewModel.login(account, password) },
-            onRegister = { account, password -> accountViewModel.register(account, password) },
-            onAuthSuccess = {},
-        )
-        return
+    fun resetMyPageStack() {
+        myPageStack.clear()
+        myPageStack.add(MyPageDestination.Root)
     }
 
-    if (showMyPage) {
-        when (myPageDestination) {
+    fun openMyPage(destination: MyPageDestination = MyPageDestination.Root) {
+        hostMotionDirection = NavigationMotionDirection.Forward
+        showContactDialog = false
+        showMyPage = true
+        resetMyPageStack()
+        if (destination != MyPageDestination.Root) {
+            myPageStack.add(destination)
+        }
+    }
+
+    fun pushMyPage(destination: MyPageDestination) {
+        if (myPageDestination == destination) return
+        hostMotionDirection = NavigationMotionDirection.Forward
+        showContactDialog = false
+        myPageStack.add(destination)
+    }
+
+    fun popMyPageOrClose() {
+        hostMotionDirection = NavigationMotionDirection.Backward
+        showContactDialog = false
+        if (myPageStack.size > 1) {
+            myPageStack.removeAt(myPageStack.lastIndex)
+        } else {
+            showMyPage = false
+            resetMyPageStack()
+        }
+    }
+
+    fun navigateMainDestination(destination: AppDestination) {
+        if (destination == currentDestination) return
+        if (currentDestination == AppDestination.Notes) {
+            noteViewModel.clearSelection()
+        }
+        if (currentDestination == AppDestination.Todo) {
+            todoViewModel.clearSelection()
+        }
+        mainMotionDirection = if (appDestinationIndex(destination) >= appDestinationIndex(currentDestination)) {
+            NavigationMotionDirection.Forward
+        } else {
+            NavigationMotionDirection.Backward
+        }
+        showCategoryDropdown = false
+        currentDestination = destination
+        mainDestinationStack.add(destination)
+    }
+
+    fun popMainDestination() {
+        if (mainDestinationStack.size <= 1) return
+        mainMotionDirection = NavigationMotionDirection.Backward
+        showCategoryDropdown = false
+        mainDestinationStack.removeAt(mainDestinationStack.lastIndex)
+        currentDestination = mainDestinationStack.last()
+    }
+
+    val hostScreen = when {
+        !accountState.hasSeenAuthChoice -> HostScreen.AuthEntry
+        showMyPage -> HostScreen.My(myPageDestination)
+        showAddNote -> HostScreen.AddNote
+        editingNote != null -> HostScreen.EditNote(editingNote!!)
+        showAddTodo -> HostScreen.AddTodo
+        editingTodo != null -> HostScreen.EditTodo(editingTodo!!)
+        showCategoryManage -> HostScreen.CategoryManage
+        else -> HostScreen.Main
+    }
+
+    BackHandler(
+        enabled =
+            showContactDialog ||
+                showMyPage ||
+                showAddNote ||
+                editingNote != null ||
+                showAddTodo ||
+                editingTodo != null ||
+                showCategoryManage ||
+                drawerState.isOpen ||
+                showCategoryDropdown ||
+                noteSelectionMode ||
+                todoSelectionMode ||
+                mainDestinationStack.size > 1,
+    ) {
+        when {
+            showContactDialog -> showContactDialog = false
+            showMyPage -> popMyPageOrClose()
+            showAddNote -> {
+                hostMotionDirection = NavigationMotionDirection.Backward
+                showAddNote = false
+            }
+            editingNote != null -> {
+                hostMotionDirection = NavigationMotionDirection.Backward
+                editingNote = null
+            }
+            showAddTodo -> {
+                hostMotionDirection = NavigationMotionDirection.Backward
+                showAddTodo = false
+            }
+            editingTodo != null -> {
+                hostMotionDirection = NavigationMotionDirection.Backward
+                editingTodo = null
+            }
+            showCategoryManage -> {
+                hostMotionDirection = NavigationMotionDirection.Backward
+                showCategoryManage = false
+            }
+            drawerState.isOpen -> scope.launch { drawerState.close() }
+            showCategoryDropdown -> showCategoryDropdown = false
+            currentDestination == AppDestination.Notes && noteSelectionMode -> noteViewModel.clearSelection()
+            currentDestination == AppDestination.Todo && todoSelectionMode -> todoViewModel.clearSelection()
+            mainDestinationStack.size > 1 -> popMainDestination()
+        }
+    }
+
+    @Composable
+    fun MyPageHost(destination: MyPageDestination) {
+        when (destination) {
             MyPageDestination.Root -> {
                 MyScreen(
                     displayName = accountState.displayName,
                     subtitle = if (accountState.isLoggedIn) "点击查看和修改个人信息" else "点击登录或完善个人信息",
                     avatarUri = accountState.avatarUri,
-                    onBack = {
-                        showContactDialog = false
-                        myPageDestination = MyPageDestination.Root
-                        showMyPage = false
-                    },
+                    onBack = { popMyPageOrClose() },
                     onProfileClick = {
-                        showContactDialog = false
-                        myPageDestination = if (accountState.isLoggedIn) {
-                            MyPageDestination.Profile
-                        } else {
-                            MyPageDestination.Auth
-                        }
+                        pushMyPage(
+                            if (accountState.isLoggedIn) MyPageDestination.Profile else MyPageDestination.Auth,
+                        )
                     },
                     onMenuClick = { action ->
                         when (action) {
-                            MyMenuAction.CategoryManage -> {
-                                showContactDialog = false
-                                myPageDestination = MyPageDestination.CategoryManage
-                            }
-                            MyMenuAction.ReminderSettings -> {
-                                showContactDialog = false
-                                myPageDestination = MyPageDestination.ReminderSettings
-                            }
-                            MyMenuAction.DataAndSync -> {
-                                showContactDialog = false
-                                myPageDestination = MyPageDestination.DataAndSync
-                            }
-                            MyMenuAction.GeneralSettings -> {
-                                showContactDialog = false
-                                myPageDestination = MyPageDestination.GeneralSettings
-                            }
+                            MyMenuAction.CategoryManage -> pushMyPage(MyPageDestination.CategoryManage)
+                            MyMenuAction.ReminderSettings -> pushMyPage(MyPageDestination.ReminderSettings)
+                            MyMenuAction.DataAndSync -> pushMyPage(MyPageDestination.DataAndSync)
+                            MyMenuAction.GeneralSettings -> pushMyPage(MyPageDestination.GeneralSettings)
                             MyMenuAction.ContactUs -> showContactDialog = true
-                            MyMenuAction.About -> {
-                                showContactDialog = false
-                                myPageDestination = MyPageDestination.About
-                            }
+                            MyMenuAction.About -> pushMyPage(MyPageDestination.About)
                         }
-                    }
+                    },
                 )
             }
+
             MyPageDestination.Profile -> {
                 ProfileInfoScreen(
                     state = accountState,
-                    onBack = { myPageDestination = MyPageDestination.Root },
-                    onOpenAuth = { myPageDestination = MyPageDestination.Auth },
+                    onBack = { popMyPageOrClose() },
+                    onOpenAuth = { pushMyPage(MyPageDestination.Auth) },
                     onNicknameConfirm = { value -> accountViewModel.updateNickname(value) },
                     onAccountConfirm = { value -> accountViewModel.updateAccount(value) },
                     onAvatarChange = { uri -> accountViewModel.updateAvatar(uri) },
@@ -250,119 +387,373 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     onCancelAccount = { accountViewModel.cancelAccount() },
                 )
             }
+
             MyPageDestination.Auth -> {
                 AuthScreen(
                     initialMode = if (accountState.hasLocalAccount) AuthMode.Login else AuthMode.Register,
                     allowSkip = false,
-                    onBack = { myPageDestination = MyPageDestination.Profile },
+                    onBack = { popMyPageOrClose() },
                     onSkip = {},
                     onLogin = { account, password -> accountViewModel.login(account, password) },
                     onRegister = { account, password -> accountViewModel.register(account, password) },
-                    onAuthSuccess = { myPageDestination = MyPageDestination.Profile },
+                    onAuthSuccess = {
+                        hostMotionDirection = NavigationMotionDirection.Forward
+                        if (myPageStack.lastOrNull() == MyPageDestination.Auth) {
+                            myPageStack.removeAt(myPageStack.lastIndex)
+                        }
+                        if (myPageStack.lastOrNull() != MyPageDestination.Profile) {
+                            myPageStack.add(MyPageDestination.Profile)
+                        }
+                    },
                 )
             }
+
             MyPageDestination.CategoryManage -> {
                 CategoryManageScreen(
                     viewModel = categoryViewModel,
-                    onBack = { myPageDestination = MyPageDestination.Root }
+                    onBack = { popMyPageOrClose() },
                 )
             }
+
             MyPageDestination.ReminderSettings -> {
-                ReminderSettingsScreen(onBack = { myPageDestination = MyPageDestination.Root })
+                ReminderSettingsScreen(onBack = { popMyPageOrClose() })
             }
+
             MyPageDestination.DataAndSync -> {
-                DataAndSyncScreen(onBack = { myPageDestination = MyPageDestination.Root })
+                DataAndSyncScreen(onBack = { popMyPageOrClose() })
             }
+
             MyPageDestination.GeneralSettings -> {
-                GeneralSettingsScreen(onBack = { myPageDestination = MyPageDestination.Root })
+                GeneralSettingsScreen(onBack = { popMyPageOrClose() })
             }
+
             MyPageDestination.About -> {
-                AboutBianwanluScreen(onBack = { myPageDestination = MyPageDestination.Root })
+                AboutBianwanluScreen(onBack = { popMyPageOrClose() })
             }
         }
 
         if (showContactDialog) {
-            AlertDialog(
-                onDismissRequest = { showContactDialog = false },
-                title = { Text("联系我们") },
-                text = { Text("如需反馈问题或建议，可后续通过官方联系方式联系我们。当前先完成页面交互。", color = Color(0xFF616161)) },
-                confirmButton = {
-                    TextButton(onClick = { showContactDialog = false }) {
-                        Text("我知道了", color = Color(0xFF212121))
-                    }
-                }
+            ProfileActionDialog(
+                title = "联系我们",
+                message = "如需反馈问题或建议，你可以优先在“关于便玩录”中的“意见与反馈”提交 GitHub Issues。更多官方联系方式后续开放。",
+                options = emptyList(),
+                dismissText = "我知道了",
+                onDismiss = { showContactDialog = false },
+                onOptionClick = {},
             )
         }
-        return
     }
 
-    // 新建笔记全屏页面
-    if (showAddNote) {
-        AddNoteScreen(
-            onCancel = { showAddNote = false },
-            onConfirm = { noteTitle, noteContent, reminderTime, isPriority, cardColor, textColor, imageUris ->
-                noteViewModel.addNote(
-                    title = noteTitle,
-                    content = noteContent,
-                    reminderTime = reminderTime,
-                    isPriority = isPriority,
-                    cardColor = cardColor,
-                    textColor = textColor,
-                    imageUris = imageUris
+    @Composable
+    fun MainHost() {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                AppDrawerContent(
+                    noteCategories = noteCategories,
+                    todoCategories = todoCategories,
+                    selectedCategory = selectedCategory,
+                    userDisplayName = accountState.displayName,
+                    userSecondaryText = accountState.secondaryText,
+                    avatarUri = accountState.avatarUri,
+                    onCategorySelect = { cat ->
+                        when (cat.type) {
+                            CategoryType.NOTE -> {
+                                navigateMainDestination(AppDestination.Notes)
+                                noteViewModel.selectCategory(cat)
+                            }
+
+                            CategoryType.TODO -> {
+                                navigateMainDestination(AppDestination.Todo)
+                                todoViewModel.selectCategory(cat)
+                            }
+                        }
+                        scope.launch { drawerState.close() }
+                    },
+                    onMyClick = {
+                        openMyPage()
+                        scope.launch { drawerState.close() }
+                    },
+                    onSyncClick = { scope.launch { drawerState.close() } },
+                    onGameClick = { scope.launch { drawerState.close() } },
                 )
-                showAddNote = false
+            },
+            gesturesEnabled = true,
+        ) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    if ((currentDestination == AppDestination.Notes && noteSelectionMode) ||
+                        (currentDestination == AppDestination.Todo && todoSelectionMode)
+                    ) {
+                        TodoSelectionTopBar(
+                            selectedCount = if (currentDestination == AppDestination.Notes) selectedNoteIds.size else selectedTodoIds.size,
+                            allSelected = if (currentDestination == AppDestination.Notes) allFilteredNotesSelected else allFilteredTodosSelected,
+                            onCancel = {
+                                if (currentDestination == AppDestination.Notes) {
+                                    noteViewModel.clearSelection()
+                                } else {
+                                    todoViewModel.clearSelection()
+                                }
+                            },
+                            onSelectAllToggle = {
+                                if (currentDestination == AppDestination.Notes) {
+                                    if (allFilteredNotesSelected) {
+                                        noteViewModel.clearSelection()
+                                    } else {
+                                        noteViewModel.selectAllFilteredNotes()
+                                    }
+                                } else {
+                                    if (allFilteredTodosSelected) {
+                                        todoViewModel.clearSelection()
+                                    } else {
+                                        todoViewModel.selectAllFilteredTodos()
+                                    }
+                                }
+                            },
+                        )
+                    } else {
+                        MainTopBar(
+                            title = title,
+                            itemCount = itemCount,
+                            showArrow = hasCategoryDropdown,
+                            isDropdownOpen = showCategoryDropdown,
+                            avatarUri = accountState.avatarUri,
+                            onTitleClick = {
+                                if (hasCategoryDropdown) showCategoryDropdown = !showCategoryDropdown
+                            },
+                            onAvatarClick = { scope.launch { drawerState.open() } },
+                            onSearchClick = {},
+                            onMenuClick = {},
+                        )
+                    }
+                },
+                bottomBar = {
+                    if ((currentDestination == AppDestination.Notes && noteSelectionMode) ||
+                        (currentDestination == AppDestination.Todo && todoSelectionMode)
+                    ) {
+                        TodoSelectionBottomBar(
+                            onPriorityClick = {
+                                if (currentDestination == AppDestination.Notes) {
+                                    noteViewModel.applyPriorityToSelectedNotes()
+                                } else {
+                                    todoViewModel.applyPriorityToSelectedTodos()
+                                }
+                            },
+                            onReminderClick = {
+                                if (currentDestination == AppDestination.Notes) {
+                                    showBatchNoteReminderDialog = true
+                                } else {
+                                    showBatchTodoReminderDialog = true
+                                }
+                            },
+                            onDeleteClick = {
+                                if (currentDestination == AppDestination.Notes) {
+                                    showDeleteNotesConfirm = true
+                                } else {
+                                    showDeleteTodosConfirm = true
+                                }
+                            },
+                        )
+                    } else {
+                        BottomNavBar(
+                            currentDestination = currentDestination,
+                            onDestinationSelected = { navigateMainDestination(it) },
+                        )
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.background,
+            ) { innerPadding ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                ) {
+                    AnimatedContent(
+                        targetState = currentDestination,
+                        transitionSpec = { createScreenTransition(mainMotionDirection) },
+                        modifier = Modifier.fillMaxSize(),
+                        label = "main_screen_transition",
+                    ) { destination ->
+                        when (destination) {
+                            AppDestination.Notes -> NoteListScreen(
+                                viewModel = noteViewModel,
+                                onAddNote = {
+                                    hostMotionDirection = NavigationMotionDirection.Forward
+                                    showAddNote = true
+                                },
+                                onEditNote = {
+                                    hostMotionDirection = NavigationMotionDirection.Forward
+                                    editingNote = it
+                                },
+                            )
+
+                            AppDestination.Todo -> TodoListScreen(
+                                viewModel = todoViewModel,
+                                onAddTodo = {
+                                    hostMotionDirection = NavigationMotionDirection.Forward
+                                    showAddTodo = true
+                                },
+                                onEditTodo = {
+                                    hostMotionDirection = NavigationMotionDirection.Forward
+                                    editingTodo = it
+                                },
+                            )
+
+                            AppDestination.Timeline -> MainTimelineScreen()
+                            AppDestination.Calendar -> CalendarScreen()
+                        }
+                    }
+
+                    if (hasCategoryDropdown && showCategoryDropdown && !(currentDestination == AppDestination.Todo && todoSelectionMode)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { showCategoryDropdown = false },
+                                )
+                                .zIndex(5f),
+                        )
+                    }
+
+                    if (hasCategoryDropdown && !(currentDestination == AppDestination.Todo && todoSelectionMode)) {
+                        CategoryDropdown(
+                            visible = showCategoryDropdown,
+                            categories = categories,
+                            selectedCategory = selectedCategory,
+                            onSelect = { cat ->
+                                when (currentDestination) {
+                                    AppDestination.Notes -> noteViewModel.selectCategory(cat)
+                                    AppDestination.Todo -> todoViewModel.selectCategory(cat)
+                                    else -> {}
+                                }
+                            },
+                            onDismiss = { showCategoryDropdown = false },
+                            onAddCategory = { showAddCategoryDialog = true },
+                            onManageCategory = {
+                                hostMotionDirection = NavigationMotionDirection.Forward
+                                showCategoryManage = true
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .zIndex(10f),
+                        )
+                    }
+                }
             }
-        )
-        return
+        }
     }
 
-    // 编辑笔记全屏页面
-    if (editingNote != null) {
-        val note = editingNote!!
-        AddNoteScreen(
-            existingNote = note,
-            onCancel = { editingNote = null },
-            onConfirm = { noteTitle, noteContent, reminderTime, isPriority, cardColor, textColor, imageUris ->
-                noteViewModel.updateNote(
-                    existing = note,
-                    title = noteTitle,
-                    content = noteContent,
-                    reminderTime = reminderTime,
-                    isPriority = isPriority,
-                    cardColor = cardColor,
-                    textColor = textColor,
-                    imageUris = imageUris
+    AnimatedContent(
+        targetState = hostScreen,
+        transitionSpec = { createScreenTransition(hostMotionDirection) },
+        modifier = modifier.fillMaxSize(),
+        label = "host_screen_transition",
+    ) { screen ->
+        when (screen) {
+            HostScreen.AuthEntry -> {
+                AuthScreen(
+                    initialMode = if (accountState.hasLocalAccount) AuthMode.Login else AuthMode.Register,
+                    allowSkip = true,
+                    onBack = null,
+                    onSkip = { accountViewModel.skipLogin() },
+                    onLogin = { account, password -> accountViewModel.login(account, password) },
+                    onRegister = { account, password -> accountViewModel.register(account, password) },
+                    onAuthSuccess = {},
                 )
-                editingNote = null
             }
-        )
-        return
-    }
 
-    // 新建待办全屏页面
-    if (showAddTodo) {
-        AddTodoScreen(
-            onCancel = { showAddTodo = false },
-            onConfirm = { todoTitle, reminderTime, isPriority, cardColor ->
-                todoViewModel.addTodo(todoTitle, reminderTime, isPriority, cardColor)
-                showAddTodo = false
-            }
-        )
-        return
-    }
+            is HostScreen.My -> MyPageHost(screen.destination)
 
-    // 编辑待办全屏页面
-    if (editingTodo != null) {
-        val todo = editingTodo!!
-        AddTodoScreen(
-            existingTodo = todo,
-            onCancel = { editingTodo = null },
-            onConfirm = { todoTitle, reminderTime, isPriority, cardColor ->
-                todoViewModel.updateTodo(todo, todoTitle, reminderTime, isPriority, cardColor)
-                editingTodo = null
+            HostScreen.AddNote -> {
+                AddNoteScreen(
+                    onCancel = {
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        showAddNote = false
+                    },
+                    onConfirm = { noteTitle, noteContent, reminderTime, isPriority, cardColor, textColor, imageUris ->
+                        noteViewModel.addNote(
+                            title = noteTitle,
+                            content = noteContent,
+                            reminderTime = reminderTime,
+                            isPriority = isPriority,
+                            cardColor = cardColor,
+                            textColor = textColor,
+                            imageUris = imageUris,
+                        )
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        showAddNote = false
+                    },
+                )
             }
-        )
-        return
+
+            is HostScreen.EditNote -> {
+                AddNoteScreen(
+                    existingNote = screen.note,
+                    onCancel = {
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        editingNote = null
+                    },
+                    onConfirm = { noteTitle, noteContent, reminderTime, isPriority, cardColor, textColor, imageUris ->
+                        noteViewModel.updateNote(
+                            existing = screen.note,
+                            title = noteTitle,
+                            content = noteContent,
+                            reminderTime = reminderTime,
+                            isPriority = isPriority,
+                            cardColor = cardColor,
+                            textColor = textColor,
+                            imageUris = imageUris,
+                        )
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        editingNote = null
+                    },
+                )
+            }
+
+            HostScreen.AddTodo -> {
+                AddTodoScreen(
+                    onCancel = {
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        showAddTodo = false
+                    },
+                    onConfirm = { todoTitle, reminderTime, isPriority, cardColor ->
+                        todoViewModel.addTodo(todoTitle, reminderTime, isPriority, cardColor)
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        showAddTodo = false
+                    },
+                )
+            }
+
+            is HostScreen.EditTodo -> {
+                AddTodoScreen(
+                    existingTodo = screen.todo,
+                    onCancel = {
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        editingTodo = null
+                    },
+                    onConfirm = { todoTitle, reminderTime, isPriority, cardColor ->
+                        todoViewModel.updateTodo(screen.todo, todoTitle, reminderTime, isPriority, cardColor)
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        editingTodo = null
+                    },
+                )
+            }
+
+            HostScreen.CategoryManage -> {
+                CategoryManageScreen(
+                    viewModel = categoryViewModel,
+                    onBack = {
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        showCategoryManage = false
+                    },
+                )
+            }
+
+            HostScreen.Main -> MainHost()
+        }
     }
 
     if (showBatchNoteReminderDialog) {
@@ -376,7 +767,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             onClear = {
                 noteViewModel.updateReminderForSelectedNotes(null)
                 showBatchNoteReminderDialog = false
-            }
+            },
         )
     }
 
@@ -390,7 +781,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     onClick = {
                         noteViewModel.deleteSelectedNotes()
                         showDeleteNotesConfirm = false
-                    }
+                    },
                 ) {
                     Text("删除", color = Color(0xFFE65E4F))
                 }
@@ -399,7 +790,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 TextButton(onClick = { showDeleteNotesConfirm = false }) {
                     Text("取消", color = Color(0xFF212121))
                 }
-            }
+            },
         )
     }
 
@@ -414,7 +805,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             onClear = {
                 todoViewModel.updateReminderForSelectedTodos(null)
                 showBatchTodoReminderDialog = false
-            }
+            },
         )
     }
 
@@ -428,7 +819,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     onClick = {
                         todoViewModel.deleteSelectedTodos()
                         showDeleteTodosConfirm = false
-                    }
+                    },
                 ) {
                     Text("删除", color = Color(0xFFE65E4F))
                 }
@@ -437,209 +828,8 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 TextButton(onClick = { showDeleteTodosConfirm = false }) {
                     Text("取消", color = Color(0xFF212121))
                 }
-            }
-        )
-    }
-
-    // 分类管理全屏页面
-    if (showCategoryManage) {
-        CategoryManageScreen(
-            viewModel = categoryViewModel,
-            onBack = { showCategoryManage = false }
-        )
-        return
-    }
-
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            AppDrawerContent(
-                noteCategories = noteCategories,
-                todoCategories = todoCategories,
-                selectedCategory = selectedCategory,
-                userDisplayName = accountState.displayName,
-                userSecondaryText = accountState.secondaryText,
-                avatarUri = accountState.avatarUri,
-                onCategorySelect = { cat ->
-                    when (cat.type) {
-                        CategoryType.NOTE -> {
-                            currentDestination = AppDestination.Notes
-                            noteViewModel.selectCategory(cat)
-                        }
-                        CategoryType.TODO -> {
-                            currentDestination = AppDestination.Todo
-                            todoViewModel.selectCategory(cat)
-                        }
-                    }
-                    scope.launch { drawerState.close() }
-                },
-                onMyClick = {
-                    myPageDestination = MyPageDestination.Root
-                    showContactDialog = false
-                    showMyPage = true
-                    scope.launch { drawerState.close() }
-                },
-                onSyncClick = { scope.launch { drawerState.close() } },
-                onGameClick = { scope.launch { drawerState.close() } }
-            )
-        },
-        gesturesEnabled = true
-    ) {
-        Scaffold(
-            modifier = modifier,
-            topBar = {
-                if ((currentDestination == AppDestination.Notes && noteSelectionMode) ||
-                    (currentDestination == AppDestination.Todo && todoSelectionMode)
-                ) {
-                    TodoSelectionTopBar(
-                        selectedCount = if (currentDestination == AppDestination.Notes) selectedNoteIds.size else selectedTodoIds.size,
-                        allSelected = if (currentDestination == AppDestination.Notes) allFilteredNotesSelected else allFilteredTodosSelected,
-                        onCancel = {
-                            if (currentDestination == AppDestination.Notes) {
-                                noteViewModel.clearSelection()
-                            } else {
-                                todoViewModel.clearSelection()
-                            }
-                        },
-                        onSelectAllToggle = {
-                            if (currentDestination == AppDestination.Notes) {
-                                if (allFilteredNotesSelected) {
-                                    noteViewModel.clearSelection()
-                                } else {
-                                    noteViewModel.selectAllFilteredNotes()
-                                }
-                            } else {
-                                if (allFilteredTodosSelected) {
-                                    todoViewModel.clearSelection()
-                                } else {
-                                    todoViewModel.selectAllFilteredTodos()
-                                }
-                            }
-                        }
-                    )
-                } else {
-                    MainTopBar(
-                        title = title,
-                        itemCount = itemCount,
-                        showArrow = hasCategoryDropdown,
-                        isDropdownOpen = showCategoryDropdown,
-                        avatarUri = accountState.avatarUri,
-                        onTitleClick = {
-                            if (hasCategoryDropdown) showCategoryDropdown = !showCategoryDropdown
-                        },
-                        onAvatarClick = { scope.launch { drawerState.open() } },
-                        onSearchClick = {},
-                        onMenuClick = {}
-                    )
-                }
             },
-            bottomBar = {
-                if ((currentDestination == AppDestination.Notes && noteSelectionMode) ||
-                    (currentDestination == AppDestination.Todo && todoSelectionMode)
-                ) {
-                    TodoSelectionBottomBar(
-                        onPriorityClick = {
-                            if (currentDestination == AppDestination.Notes) {
-                                noteViewModel.applyPriorityToSelectedNotes()
-                            } else {
-                                todoViewModel.applyPriorityToSelectedTodos()
-                            }
-                        },
-                        onReminderClick = {
-                            if (currentDestination == AppDestination.Notes) {
-                                showBatchNoteReminderDialog = true
-                            } else {
-                                showBatchTodoReminderDialog = true
-                            }
-                        },
-                        onDeleteClick = {
-                            if (currentDestination == AppDestination.Notes) {
-                                showDeleteNotesConfirm = true
-                            } else {
-                                showDeleteTodosConfirm = true
-                            }
-                        }
-                    )
-                } else {
-                    BottomNavBar(
-                        currentDestination = currentDestination,
-                        onDestinationSelected = {
-                            if (currentDestination == AppDestination.Notes && it != currentDestination) {
-                                noteViewModel.clearSelection()
-                            }
-                            if (currentDestination == AppDestination.Todo && it != currentDestination) {
-                                todoViewModel.clearSelection()
-                            }
-                            if (it != currentDestination) showCategoryDropdown = false
-                            currentDestination = it
-                        }
-                    )
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.background
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                AnimatedContent(
-                    targetState = currentDestination,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    modifier = Modifier.fillMaxSize(),
-                    label = "screen_transition"
-                ) { destination ->
-                    when (destination) {
-                        AppDestination.Notes -> NoteListScreen(
-                            viewModel = noteViewModel,
-                            onAddNote = { showAddNote = true },
-                            onEditNote = { editingNote = it }
-                        )
-                        AppDestination.Todo -> TodoListScreen(
-                            viewModel = todoViewModel,
-                            onAddTodo = { showAddTodo = true },
-                            onEditTodo = { editingTodo = it }
-                        )
-                        AppDestination.Timeline -> TimelineScreen()
-                        AppDestination.Calendar -> CalendarScreen()
-                    }
-                }
-
-                if (hasCategoryDropdown && showCategoryDropdown && !(currentDestination == AppDestination.Todo && todoSelectionMode)) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { showCategoryDropdown = false }
-                            )
-                            .zIndex(5f)
-                    )
-                }
-
-                if (hasCategoryDropdown && !(currentDestination == AppDestination.Todo && todoSelectionMode)) {
-                    CategoryDropdown(
-                        visible = showCategoryDropdown,
-                        categories = categories,
-                        selectedCategory = selectedCategory,
-                        onSelect = { cat ->
-                            when (currentDestination) {
-                                AppDestination.Notes -> noteViewModel.selectCategory(cat)
-                                AppDestination.Todo -> todoViewModel.selectCategory(cat)
-                                else -> {}
-                            }
-                        },
-                        onDismiss = { showCategoryDropdown = false },
-                        onAddCategory = { showAddCategoryDialog = true },
-                        onManageCategory = { showCategoryManage = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .zIndex(10f)
-                    )
-                }
-            }
-        }
+        )
     }
 
     if (showAddCategoryDialog) {
@@ -654,7 +844,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             onConfirm = { name, type ->
                 categoryViewModel.addCategory(name, type)
                 showAddCategoryDialog = false
-            }
+            },
         )
     }
 }
@@ -717,12 +907,14 @@ private fun MainTopBar(
                         )
                     }
                 }
-                Text(
-                    text = if (itemCount >= 0) "共${itemCount}条" else "共···条",
-                    fontSize = 11.sp,
-                    color = NavUnselected,
-                    lineHeight = 14.sp
-                )
+                if (itemCount >= 0) {
+                    Text(
+                        text = "共${itemCount}条",
+                        fontSize = 11.sp,
+                        color = NavUnselected,
+                        lineHeight = 14.sp
+                    )
+                }
             }
         }
 
@@ -872,6 +1064,7 @@ private fun MainTopBarPreview() {
         )
     }
 }
+
 
 
 

@@ -131,6 +131,7 @@ fun NoteListScreen(
                     openedNoteId = openedNoteId,
                     onOpenedNoteChange = { openedNoteId = it },
                     onDelete = viewModel::deleteNote,
+                    onToggleComplete = viewModel::toggleComplete,
                     onEdit = onEditNote,
                     onEnterSelection = {
                         openedNoteId = null
@@ -222,6 +223,7 @@ private fun NoteContent(
     openedNoteId: Long?,
     onOpenedNoteChange: (Long?) -> Unit,
     onDelete: (Note) -> Unit,
+    onToggleComplete: (Note) -> Unit,
     onEdit: (Note) -> Unit,
     onEnterSelection: (Note) -> Unit,
     onToggleSelection: (Long) -> Unit,
@@ -253,6 +255,7 @@ private fun NoteContent(
                     onRevealedChange = { revealed -> onOpenedNoteChange(if (revealed) note.id else null) },
                     onCloseRequested = { onOpenedNoteChange(null) },
                     onDelete = { onDelete(note) },
+                    onToggleComplete = { onToggleComplete(note) },
                     onEdit = { onEdit(note) },
                     onLongPress = { onEnterSelection(note) }
                 )
@@ -265,6 +268,7 @@ private fun NoteContent(
                     onRevealedChange = { revealed -> onOpenedNoteChange(if (revealed) note.id else null) },
                     onCloseRequested = { onOpenedNoteChange(null) },
                     onDelete = { onDelete(note) },
+                    onToggleComplete = { onToggleComplete(note) },
                     onEdit = { onEdit(note) },
                     onLongPress = { onEnterSelection(note) }
                 )
@@ -390,11 +394,13 @@ private fun SwipeNoteItem(
     onRevealedChange: (Boolean) -> Unit,
     onCloseRequested: () -> Unit,
     onDelete: () -> Unit,
+    onToggleComplete: () -> Unit,
     onEdit: () -> Unit,
     onLongPress: () -> Unit
 ) {
     SwipeRevealDeleteItem(
         onDelete = onDelete,
+        onSwipeRightAction = onToggleComplete,
         isRevealed = isRevealed,
         onRevealedChange = onRevealedChange,
         modifier = Modifier

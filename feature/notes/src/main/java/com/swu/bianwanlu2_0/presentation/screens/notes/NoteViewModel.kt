@@ -7,8 +7,12 @@ import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
 import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.data.local.entity.NoteStatus
+import com.swu.bianwanlu2_0.data.local.entity.TimelineActionType
+import com.swu.bianwanlu2_0.data.local.entity.TimelineEvent
+import com.swu.bianwanlu2_0.data.local.entity.TimelineItemType
 import com.swu.bianwanlu2_0.data.repository.CategoryRepository
 import com.swu.bianwanlu2_0.data.repository.NoteRepository
+import com.swu.bianwanlu2_0.data.repository.TimelineEventRepository
 import com.swu.bianwanlu2_0.utils.GUEST_USER_ID
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -42,7 +46,8 @@ enum class NoteFilter(val label: String) {
 class NoteViewModel @Inject constructor(
     private val noteRepository: NoteRepository,
     private val categoryRepository: CategoryRepository,
-    private val categorySelectionStore: CategorySelectionStore
+    private val categorySelectionStore: CategorySelectionStore,
+    private val timelineEventRepository: TimelineEventRepository,
 ) : ViewModel() {
 
     val categories: StateFlow<List<Category>> = categoryRepository
@@ -196,12 +201,12 @@ class NoteViewModel @Inject constructor(
             }
 
             notesToUpdate.forEach { note ->
-                noteRepository.update(
-                    note.copy(
-                        isPriority = hasNonPriorityNote,
-                        updatedAt = now
-                    )
+                val updatedNote = note.copy(
+                    isPriority = hasNonPriorityNote,
+                    updatedAt = now,
                 )
+                noteRepository.update(updatedNote)
+                logNoteEvent(updatedNote, TimelineActionType.UPDATE, now)
             }
             clearSelection()
         }
@@ -220,12 +225,12 @@ class NoteViewModel @Inject constructor(
             val now = System.currentTimeMillis()
             selectedItems.forEach { note ->
                 if (note.reminderTime != reminderTime) {
-                    noteRepository.update(
-                        note.copy(
-                            reminderTime = reminderTime,
-                            updatedAt = now
-                        )
+                    val updatedNote = note.copy(
+                        reminderTime = reminderTime,
+                        updatedAt = now,
                     )
+                    noteRepository.update(updatedNote)
+                    logNoteEvent(updatedNote, TimelineActionType.REMINDER, now, reminderTime)
                 }
             }
             clearSelection()
@@ -239,6 +244,7 @@ class NoteViewModel @Inject constructor(
         viewModelScope.launch {
             selectedIds.forEach { id ->
                 noteRepository.getNoteById(id).first()?.let { note ->
+                    logNoteEvent(note, TimelineActionType.DELETE)
                     noteRepository.delete(note)
                 }
             }
@@ -274,19 +280,26 @@ class NoteViewModel @Inject constructor(
     ) {
         if (title.isBlank() && content.isBlank() && imageUris.isBlank()) return
         viewModelScope.launch {
-            noteRepository.insert(
-                Note(
-                    title = title.trim(),
-                    content = content.trim(),
-                    categoryId = _selectedCategory.value?.id,
-                    reminderTime = reminderTime,
-                    isPriority = isPriority,
-                    cardColor = cardColor,
-                    textColor = textColor,
-                    imageUris = imageUris,
-                    userId = GUEST_USER_ID
-                )
+            val now = System.currentTimeMillis()
+            val newNote = Note(
+                title = title.trim(),
+                content = content.trim(),
+                categoryId = _selectedCategory.value?.id,
+                reminderTime = reminderTime,
+                isPriority = isPriority,
+                cardColor = cardColor,
+                textColor = textColor,
+                imageUris = imageUris,
+                createdAt = now,
+                updatedAt = now,
+                userId = GUEST_USER_ID,
             )
+            val noteId = noteRepository.insert(newNote)
+            val savedNote = newNote.copy(id = noteId)
+            logNoteEvent(savedNote, TimelineActionType.CREATE, now)
+            if (reminderTime != null) {
+                logNoteEvent(savedNote, TimelineActionType.REMINDER, now, reminderTime)
+            }
         }
     }
 
@@ -302,36 +315,97 @@ class NoteViewModel @Inject constructor(
     ) {
         if (title.isBlank() && content.isBlank() && imageUris.isBlank()) return
         viewModelScope.launch {
-            noteRepository.update(
-                existing.copy(
-                    title = title.trim(),
-                    content = content.trim(),
-                    reminderTime = reminderTime,
-                    isPriority = isPriority,
-                    cardColor = cardColor,
-                    textColor = textColor,
-                    imageUris = imageUris,
-                    updatedAt = System.currentTimeMillis()
-                )
+            val trimmedTitle = title.trim()
+            val trimmedContent = content.trim()
+            val now = System.currentTimeMillis()
+            val reminderChanged = existing.reminderTime != reminderTime
+            val hasContentChanged = existing.title != trimmedTitle ||
+                existing.content != trimmedContent ||
+                existing.isPriority != isPriority ||
+                existing.cardColor != cardColor ||
+                existing.textColor != textColor ||
+                existing.imageUris != imageUris
+            if (!reminderChanged && !hasContentChanged) return@launch
+
+            val updatedNote = existing.copy(
+                title = trimmedTitle,
+                content = trimmedContent,
+                reminderTime = reminderTime,
+                isPriority = isPriority,
+                cardColor = cardColor,
+                textColor = textColor,
+                imageUris = imageUris,
+                updatedAt = now,
             )
+            noteRepository.update(updatedNote)
+            if (hasContentChanged) {
+                logNoteEvent(updatedNote, TimelineActionType.UPDATE, now)
+            }
+            if (reminderChanged) {
+                logNoteEvent(updatedNote, TimelineActionType.REMINDER, now, reminderTime)
+            }
         }
     }
 
     fun toggleComplete(note: Note) {
         viewModelScope.launch {
             val newStatus = if (note.status == NoteStatus.ACTIVE) NoteStatus.COMPLETED else NoteStatus.ACTIVE
-            noteRepository.update(
-                note.copy(
-                    status = newStatus,
-                    updatedAt = System.currentTimeMillis()
-                )
+            val now = System.currentTimeMillis()
+            val updatedNote = note.copy(
+                status = newStatus,
+                updatedAt = now,
+            )
+            noteRepository.update(updatedNote)
+            logNoteEvent(
+                updatedNote,
+                actionType = if (newStatus == NoteStatus.COMPLETED) TimelineActionType.COMPLETE else TimelineActionType.UPDATE,
+                occurredAt = now,
             )
         }
     }
 
     fun deleteNote(note: Note) {
         viewModelScope.launch {
+            logNoteEvent(note, TimelineActionType.DELETE)
             noteRepository.delete(note)
+        }
+    }
+
+    private suspend fun logNoteEvent(
+        note: Note,
+        actionType: TimelineActionType,
+        occurredAt: Long = System.currentTimeMillis(),
+        referenceTime: Long? = note.reminderTime,
+    ) {
+        timelineEventRepository.insert(
+            TimelineEvent(
+                itemId = note.id,
+                itemType = TimelineItemType.NOTE,
+                actionType = actionType,
+                categoryId = note.categoryId,
+                categoryName = resolveCategoryName(note.categoryId, "笔记"),
+                title = note.title.trim(),
+                contentPreview = buildNoteContentPreview(note),
+                referenceTime = referenceTime,
+                occurredAt = occurredAt,
+                userId = note.userId,
+            )
+        )
+    }
+
+    private fun resolveCategoryName(categoryId: Long?, fallback: String): String {
+        return categoryId?.let { id ->
+            categories.value.firstOrNull { it.id == id }?.name
+        } ?: fallback
+    }
+
+    private fun buildNoteContentPreview(note: Note): String {
+        val trimmedContent = note.content.trim()
+        return when {
+            trimmedContent.isNotBlank() -> trimmedContent
+            note.imageUris.isNotBlank() -> "图片笔记"
+            note.title.isNotBlank() -> note.title.trim()
+            else -> ""
         }
     }
 

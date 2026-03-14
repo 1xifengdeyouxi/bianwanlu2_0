@@ -5,9 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.swu.bianwanlu2_0.data.local.CategorySelectionStore
 import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
+import com.swu.bianwanlu2_0.data.local.entity.TimelineActionType
+import com.swu.bianwanlu2_0.data.local.entity.TimelineEvent
+import com.swu.bianwanlu2_0.data.local.entity.TimelineItemType
 import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.data.local.entity.TodoStatus
 import com.swu.bianwanlu2_0.data.repository.CategoryRepository
+import com.swu.bianwanlu2_0.data.repository.TimelineEventRepository
 import com.swu.bianwanlu2_0.data.repository.TodoRepository
 import com.swu.bianwanlu2_0.utils.GUEST_USER_ID
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,7 +45,8 @@ enum class TodoFilter(val label: String) {
 class TodoViewModel @Inject constructor(
     private val todoRepository: TodoRepository,
     private val categoryRepository: CategoryRepository,
-    private val categorySelectionStore: CategorySelectionStore
+    private val categorySelectionStore: CategorySelectionStore,
+    private val timelineEventRepository: TimelineEventRepository,
 ) : ViewModel() {
 
     val categories: StateFlow<List<Category>> = categoryRepository
@@ -196,12 +201,12 @@ class TodoViewModel @Inject constructor(
             }
 
             todosToUpdate.forEach { todo ->
-                todoRepository.update(
-                    todo.copy(
-                        isPriority = hasNonPriorityTodo,
-                        updatedAt = now
-                    )
+                val updatedTodo = todo.copy(
+                    isPriority = hasNonPriorityTodo,
+                    updatedAt = now,
                 )
+                todoRepository.update(updatedTodo)
+                logTodoEvent(updatedTodo, TimelineActionType.UPDATE, now)
             }
             _refreshVersion.value += 1
             clearSelection()
@@ -221,12 +226,12 @@ class TodoViewModel @Inject constructor(
             val now = System.currentTimeMillis()
             selectedItems.forEach { todo ->
                 if (todo.reminderTime != reminderTime) {
-                    todoRepository.update(
-                        todo.copy(
-                            reminderTime = reminderTime,
-                            updatedAt = now
-                        )
+                    val updatedTodo = todo.copy(
+                        reminderTime = reminderTime,
+                        updatedAt = now,
                     )
+                    todoRepository.update(updatedTodo)
+                    logTodoEvent(updatedTodo, TimelineActionType.REMINDER, now, reminderTime)
                 }
             }
             _refreshVersion.value += 1
@@ -239,6 +244,12 @@ class TodoViewModel @Inject constructor(
         if (selectedIds.isEmpty()) return
 
         viewModelScope.launch {
+            val selectedItems = selectedIds.mapNotNull { id ->
+                todoRepository.getTodoById(id).first()
+            }
+            selectedItems.forEach { todo ->
+                logTodoEvent(todo, TimelineActionType.DELETE)
+            }
             todoRepository.deleteByIds(selectedIds)
             _refreshVersion.value += 1
             clearSelection()
@@ -271,28 +282,40 @@ class TodoViewModel @Inject constructor(
     ) {
         if (title.isBlank()) return
         viewModelScope.launch {
-            todoRepository.insert(
-                Todo(
-                    title = title.trim(),
-                    categoryId = _selectedCategory.value?.id,
-                    isPriority = isPriority,
-                    reminderTime = reminderTime,
-                    cardColor = cardColor,
-                    userId = GUEST_USER_ID
-                )
+            val now = System.currentTimeMillis()
+            val newTodo = Todo(
+                title = title.trim(),
+                categoryId = _selectedCategory.value?.id,
+                isPriority = isPriority,
+                reminderTime = reminderTime,
+                cardColor = cardColor,
+                createdAt = now,
+                updatedAt = now,
+                userId = GUEST_USER_ID,
             )
+            val todoId = todoRepository.insert(newTodo)
+            val savedTodo = newTodo.copy(id = todoId)
+            logTodoEvent(savedTodo, TimelineActionType.CREATE, now)
+            if (reminderTime != null) {
+                logTodoEvent(savedTodo, TimelineActionType.REMINDER, now, reminderTime)
+            }
         }
     }
 
     fun toggleComplete(todo: Todo) {
         viewModelScope.launch {
             val newStatus = if (todo.status == TodoStatus.ACTIVE) TodoStatus.COMPLETED else TodoStatus.ACTIVE
-            todoRepository.update(
-                todo.copy(
-                    status = newStatus,
-                    completedAt = if (newStatus == TodoStatus.COMPLETED) System.currentTimeMillis() else null,
-                    updatedAt = System.currentTimeMillis()
-                )
+            val now = System.currentTimeMillis()
+            val updatedTodo = todo.copy(
+                status = newStatus,
+                completedAt = if (newStatus == TodoStatus.COMPLETED) now else null,
+                updatedAt = now,
+            )
+            todoRepository.update(updatedTodo)
+            logTodoEvent(
+                updatedTodo,
+                actionType = if (newStatus == TodoStatus.COMPLETED) TimelineActionType.COMPLETE else TimelineActionType.UPDATE,
+                occurredAt = now,
             )
         }
     }
@@ -306,22 +329,69 @@ class TodoViewModel @Inject constructor(
     ) {
         if (title.isBlank()) return
         viewModelScope.launch {
-            todoRepository.update(
-                todo.copy(
-                    title = title.trim(),
-                    reminderTime = reminderTime,
-                    isPriority = isPriority,
-                    cardColor = cardColor,
-                    updatedAt = System.currentTimeMillis()
-                )
+            val trimmedTitle = title.trim()
+            val now = System.currentTimeMillis()
+            val reminderChanged = todo.reminderTime != reminderTime
+            val hasContentChanged = todo.title != trimmedTitle ||
+                todo.isPriority != isPriority ||
+                todo.cardColor != cardColor
+            if (!reminderChanged && !hasContentChanged) return@launch
+
+            val updatedTodo = todo.copy(
+                title = trimmedTitle,
+                reminderTime = reminderTime,
+                isPriority = isPriority,
+                cardColor = cardColor,
+                updatedAt = now,
             )
+            todoRepository.update(updatedTodo)
+            if (hasContentChanged) {
+                logTodoEvent(updatedTodo, TimelineActionType.UPDATE, now)
+            }
+            if (reminderChanged) {
+                logTodoEvent(updatedTodo, TimelineActionType.REMINDER, now, reminderTime)
+            }
         }
     }
 
     fun deleteTodo(todo: Todo) {
         viewModelScope.launch {
+            logTodoEvent(todo, TimelineActionType.DELETE)
             todoRepository.delete(todo)
         }
+    }
+
+    private suspend fun logTodoEvent(
+        todo: Todo,
+        actionType: TimelineActionType,
+        occurredAt: Long = System.currentTimeMillis(),
+        referenceTime: Long? = todo.reminderTime,
+    ) {
+        timelineEventRepository.insert(
+            TimelineEvent(
+                itemId = todo.id,
+                itemType = TimelineItemType.TODO,
+                actionType = actionType,
+                categoryId = todo.categoryId,
+                categoryName = resolveCategoryName(todo.categoryId, "待办"),
+                title = todo.title.trim(),
+                contentPreview = buildTodoContentPreview(todo),
+                referenceTime = referenceTime,
+                occurredAt = occurredAt,
+                userId = todo.userId,
+            )
+        )
+    }
+
+    private fun resolveCategoryName(categoryId: Long?, fallback: String): String {
+        return categoryId?.let { id ->
+            categories.value.firstOrNull { it.id == id }?.name
+        } ?: fallback
+    }
+
+    private fun buildTodoContentPreview(todo: Todo): String {
+        return todo.description?.trim()?.takeIf { it.isNotBlank() }
+            ?: todo.title.trim()
     }
 
     private fun getTodayRange(): Pair<Long, Long> {
