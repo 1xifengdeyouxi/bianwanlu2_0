@@ -16,6 +16,9 @@ interface CategoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(category: Category): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(categories: List<Category>)
+
     @Update
     suspend fun update(category: Category)
 
@@ -42,4 +45,7 @@ interface CategoryDao {
 
     @Query("SELECT * FROM categories WHERE user_id = :userId AND type = :type ORDER BY sort_order ASC LIMIT 1")
     suspend fun getFirstByUserAndType(userId: Long, type: CategoryType): Category?
+
+    @Query("DELETE FROM categories WHERE user_id = :userId")
+    suspend fun deleteAllByUser(userId: Long)
 }

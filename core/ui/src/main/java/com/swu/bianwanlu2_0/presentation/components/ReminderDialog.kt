@@ -31,6 +31,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,7 +89,7 @@ fun ReminderDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             tonalElevation = 4.dp
         ) {
             Column(
@@ -101,7 +102,7 @@ fun ReminderDialog(
                     text = "设置提醒",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF212121)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -135,7 +136,7 @@ fun ReminderDialog(
                 Text(
                     text = "长按选项可自定义",
                     fontSize = 12.sp,
-                    color = Color(0xFFBDBDBD)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -185,7 +186,7 @@ private fun CustomDateTimePicker(
         Dialog(onDismissRequest = onDismiss) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 4.dp
             ) {
                 Column(
@@ -196,7 +197,7 @@ private fun CustomDateTimePicker(
                         text = "选择时间",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF212121)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -246,7 +247,7 @@ private fun ReminderOptionItem(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(60.dp)
-                .background(Color(0xFFF5F5F5), CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f), CircleShape)
         ) {
             Icon(
                 imageVector = option.icon,
@@ -259,7 +260,7 @@ private fun ReminderOptionItem(
         Text(
             text = option.label,
             fontSize = 12.sp,
-            color = Color(0xFF616161),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
     }

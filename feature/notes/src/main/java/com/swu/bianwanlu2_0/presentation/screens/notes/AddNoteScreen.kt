@@ -37,10 +37,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,7 +57,6 @@ import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.presentation.components.cardColorOptions
 import com.swu.bianwanlu2_0.presentation.components.ReminderDialog
 import com.swu.bianwanlu2_0.ui.theme.LocalAppIconTint
-import com.swu.bianwanlu2_0.ui.theme.NoteRed
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -89,21 +89,32 @@ fun AddNoteScreen(
 ) {
     val accentColor = MaterialTheme.colorScheme.primary
     val iconTint = LocalAppIconTint.current
-    var title by remember { mutableStateOf(existingNote?.title ?: "") }
-    var content by remember { mutableStateOf(existingNote?.content ?: "") }
-    var reminderTime by remember { mutableStateOf(existingNote?.reminderTime) }
-    var isPriority by remember { mutableStateOf(existingNote?.isPriority ?: false) }
-    var cardColor by remember { mutableLongStateOf(existingNote?.cardColor ?: Note.DEFAULT_CARD_COLOR) }
-    var textColor by remember { mutableLongStateOf(existingNote?.textColor ?: Note.DEFAULT_TEXT_COLOR) }
-    val imageUris = remember {
+    val primaryTextColor = MaterialTheme.colorScheme.onSurface
+    val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant
+    var title by rememberSaveable(existingNote?.id) { mutableStateOf(existingNote?.title ?: "") }
+    var content by rememberSaveable(existingNote?.id) { mutableStateOf(existingNote?.content ?: "") }
+    var reminderTime by rememberSaveable(existingNote?.id) { mutableStateOf(existingNote?.reminderTime) }
+    var isPriority by rememberSaveable(existingNote?.id) { mutableStateOf(existingNote?.isPriority ?: false) }
+    var cardColor by rememberSaveable(existingNote?.id) { mutableStateOf(existingNote?.cardColor ?: Note.DEFAULT_CARD_COLOR) }
+    var textColor by rememberSaveable(existingNote?.id) { mutableStateOf(existingNote?.textColor ?: Note.DEFAULT_TEXT_COLOR) }
+    val imageUris = rememberSaveable(
+        existingNote?.id,
+        saver = listSaver(
+            save = { it.toList() },
+            restore = { restored ->
+                mutableStateListOf<String>().apply { addAll(restored) }
+            },
+        ),
+    ) {
         mutableStateListOf<String>().apply {
             addAll(existingNote?.imageUris?.lines()?.filter { it.isNotBlank() } ?: emptyList())
         }
     }
 
-    var showReminderDialog by remember { mutableStateOf(false) }
-    var showCardColorPicker by remember { mutableStateOf(false) }
-    var showTextColorPicker by remember { mutableStateOf(false) }
+    var showReminderDialog by rememberSaveable(existingNote?.id) { mutableStateOf(false) }
+    var showCardColorPicker by rememberSaveable(existingNote?.id) { mutableStateOf(false) }
+    var showTextColorPicker by rememberSaveable(existingNote?.id) { mutableStateOf(false) }
 
     val isEditMode = existingNote != null
     val confirmEnabled = title.isNotBlank() || content.isNotBlank() || imageUris.isNotEmpty()
@@ -165,7 +176,7 @@ fun AddNoteScreen(
                         textStyle = TextStyle(
                             fontSize = 20.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF212121)
+                            color = primaryTextColor
                         ),
                         singleLine = true,
                         cursorBrush = SolidColor(accentColor),
@@ -175,7 +186,7 @@ fun AddNoteScreen(
                                     Text(
                                         text = "标题",
                                         fontSize = 20.sp,
-                                        color = Color(0xFFBDBDBD)
+                                        color = secondaryTextColor
                                     )
                                 }
                                 innerTextField()
@@ -188,7 +199,7 @@ fun AddNoteScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(Color(0xFFEEEEEE))
+                            .background(dividerColor)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -210,7 +221,7 @@ fun AddNoteScreen(
                                     Text(
                                         text = "内容",
                                         fontSize = 16.sp,
-                                        color = Color(0xFFBDBDBD)
+                                        color = secondaryTextColor
                                     )
                                 }
                                 innerTextField()
@@ -223,7 +234,7 @@ fun AddNoteScreen(
                         Text(
                             text = "提醒: ${formatReminderTime(reminderTime!!)}",
                             fontSize = 12.sp,
-                            color = Color(0xFF757575)
+                            color = secondaryTextColor
                         )
                     }
 
@@ -232,7 +243,7 @@ fun AddNoteScreen(
                         Text(
                             text = "已添加 ${imageUris.size} 张图片",
                             fontSize = 12.sp,
-                            color = Color(0xFF757575)
+                            color = secondaryTextColor
                         )
                     }
 
@@ -246,7 +257,7 @@ fun AddNoteScreen(
                         Icon(
                             imageVector = Icons.Outlined.CalendarMonth,
                             contentDescription = "设置提醒",
-                            tint = if (reminderTime != null) accentColor else Color(0xFF757575),
+                            tint = if (reminderTime != null) accentColor else secondaryTextColor,
                             modifier = Modifier
                                 .size(24.dp)
                                 .clickable(
@@ -259,7 +270,7 @@ fun AddNoteScreen(
                         Icon(
                             imageVector = Icons.Outlined.Flag,
                             contentDescription = "设置优先级",
-                            tint = if (isPriority) iconTint else Color(0xFF757575),
+                            tint = if (isPriority) iconTint else secondaryTextColor,
                             modifier = Modifier
                                 .size(24.dp)
                                 .clickable(
@@ -274,7 +285,7 @@ fun AddNoteScreen(
                                 .size(24.dp)
                                 .clip(CircleShape)
                                 .background(Color(cardColor))
-                                .border(1.5.dp, Color(0xFFBDBDBD), CircleShape)
+                                .border(1.5.dp, dividerColor, CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
@@ -319,7 +330,7 @@ fun AddNoteScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.White)
+                    .background(MaterialTheme.colorScheme.surface)
                     .padding(horizontal = 22.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp)
@@ -327,7 +338,7 @@ fun AddNoteScreen(
                 Icon(
                     imageVector = Icons.Outlined.Image,
                     contentDescription = "添加图片",
-                    tint = Color(0xFF616161),
+                    tint = secondaryTextColor,
                     modifier = Modifier
                         .size(24.dp)
                         .clickable(
@@ -399,7 +410,7 @@ private fun AddNoteTopBar(
             text = titleText,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF212121),
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center
         )
@@ -407,7 +418,7 @@ private fun AddNoteTopBar(
         Text(
             text = "完成",
             fontSize = 16.sp,
-            color = if (confirmEnabled) accentColor else Color(0xFFBDBDBD),
+            color = if (confirmEnabled) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -441,7 +452,7 @@ private fun NoteCardColorPickerRow(
                         if (selectedColor == color) {
                             Modifier.border(2.dp, iconTint, CircleShape)
                         } else {
-                            Modifier.border(1.dp, Color(0xFFE0E0E0), CircleShape)
+                            Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                         }
                     )
                     .clickable { onColorSelected(color) }
@@ -460,7 +471,7 @@ private fun NoteTextColorPickerRow(
 
     Row(
         modifier = modifier
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
@@ -475,7 +486,7 @@ private fun NoteTextColorPickerRow(
                         if (selectedColor == color) {
                             Modifier.border(2.dp, iconTint, CircleShape)
                         } else {
-                            Modifier.border(1.dp, Color(0xFFE0E0E0), CircleShape)
+                            Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                         }
                     )
                     .clickable { onColorSelected(color) }

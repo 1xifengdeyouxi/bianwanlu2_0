@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -34,7 +35,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
-import com.swu.bianwanlu2_0.ui.theme.NoteRed
 
 /**
  * 新增分类弹窗
@@ -80,7 +80,7 @@ fun AddCategoryDialog(
                         enabled = false,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
-                            checkedTrackColor = NoteRed
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
                         )
                     )
                 }
@@ -99,7 +99,7 @@ fun AddCategoryDialog(
                             selected = selectedType == CategoryType.NOTE,
                             onClick = { if (typeEnabled) selectedType = CategoryType.NOTE },
                             enabled = typeEnabled,
-                            colors = RadioButtonDefaults.colors(selectedColor = NoteRed)
+                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
                         )
                         Text("便签", fontSize = 14.sp, color = Color(0xFF212121))
                     }
@@ -109,7 +109,7 @@ fun AddCategoryDialog(
                             selected = selectedType == CategoryType.TODO,
                             onClick = { if (typeEnabled) selectedType = CategoryType.TODO },
                             enabled = typeEnabled,
-                            colors = RadioButtonDefaults.colors(selectedColor = NoteRed)
+                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
                         )
                         Text("待办", fontSize = 14.sp, color = Color(0xFF212121))
                     }
@@ -128,7 +128,7 @@ fun AddCategoryDialog(
                             Icons.Outlined.BookmarkBorder,
                             contentDescription = null,
                             modifier = Modifier.size(20.dp),
-                            tint = Color(0xFF9E9E9E)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
                     shape = RoundedCornerShape(8.dp),
@@ -141,7 +141,7 @@ fun AddCategoryDialog(
                 onClick = { onConfirm(name, selectedType) },
                 enabled = name.isNotBlank()
             ) {
-                Text(confirmText, color = if (name.isNotBlank()) NoteRed else Color(0xFFBDBDBD), fontSize = 16.sp)
+                Text(confirmText, color = if (name.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
             }
         },
         dismissButton = {

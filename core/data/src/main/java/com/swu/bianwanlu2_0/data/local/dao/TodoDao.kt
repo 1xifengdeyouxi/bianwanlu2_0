@@ -15,6 +15,9 @@ interface TodoDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(todo: Todo): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(todos: List<Todo>)
+
     @Update
     suspend fun update(todo: Todo)
 
@@ -68,4 +71,7 @@ interface TodoDao {
 
     @Query("DELETE FROM todos WHERE category_id = :categoryId")
     suspend fun deleteByCategory(categoryId: Long)
+
+    @Query("DELETE FROM todos WHERE user_id = :userId")
+    suspend fun deleteAllByUser(userId: Long)
 }

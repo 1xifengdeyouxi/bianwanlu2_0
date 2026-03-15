@@ -28,9 +28,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +46,6 @@ import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.presentation.components.cardColorOptions
 import com.swu.bianwanlu2_0.presentation.components.ReminderDialog
 import com.swu.bianwanlu2_0.ui.theme.LocalAppIconTint
-import com.swu.bianwanlu2_0.ui.theme.NoteRed
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -60,12 +59,15 @@ fun AddTodoScreen(
 ) {
     val accentColor = MaterialTheme.colorScheme.primary
     val iconTint = LocalAppIconTint.current
-    var title by remember { mutableStateOf(existingTodo?.title ?: "") }
-    var reminderTime by remember { mutableStateOf(existingTodo?.reminderTime) }
-    var isPriority by remember { mutableStateOf(existingTodo?.isPriority ?: false) }
-    var cardColor by remember { mutableLongStateOf(existingTodo?.cardColor ?: Todo.DEFAULT_CARD_COLOR) }
-    var showReminderDialog by remember { mutableStateOf(false) }
-    var showColorPicker by remember { mutableStateOf(false) }
+    val primaryTextColor = MaterialTheme.colorScheme.onSurface
+    val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant
+    var title by rememberSaveable(existingTodo?.id) { mutableStateOf(existingTodo?.title ?: "") }
+    var reminderTime by rememberSaveable(existingTodo?.id) { mutableStateOf(existingTodo?.reminderTime) }
+    var isPriority by rememberSaveable(existingTodo?.id) { mutableStateOf(existingTodo?.isPriority ?: false) }
+    var cardColor by rememberSaveable(existingTodo?.id) { mutableStateOf(existingTodo?.cardColor ?: Todo.DEFAULT_CARD_COLOR) }
+    var showReminderDialog by rememberSaveable(existingTodo?.id) { mutableStateOf(false) }
+    var showColorPicker by rememberSaveable(existingTodo?.id) { mutableStateOf(false) }
 
     val isEditMode = existingTodo != null
 
@@ -105,7 +107,7 @@ fun AddTodoScreen(
                         .height(100.dp),
                     textStyle = TextStyle(
                         fontSize = 16.sp,
-                        color = Color(0xFF212121),
+                        color = MaterialTheme.colorScheme.onSurface,
                         lineHeight = 24.sp
                     ),
                     cursorBrush = SolidColor(accentColor),
@@ -115,7 +117,7 @@ fun AddTodoScreen(
                                 Text(
                                     text = "请输入要做的事情",
                                     fontSize = 16.sp,
-                                    color = Color(0xFFBDBDBD)
+                                    color = secondaryTextColor
                                 )
                             }
                             innerTextField()
@@ -129,7 +131,7 @@ fun AddTodoScreen(
                     Text(
                         text = "提醒: ${formatReminderTime(reminderTime!!)}",
                         fontSize = 12.sp,
-                        color = Color(0xFF9E9E9E)
+                        color = secondaryTextColor
                     )
                 }
 
@@ -142,7 +144,7 @@ fun AddTodoScreen(
                     Icon(
                         imageVector = Icons.Outlined.CalendarMonth,
                         contentDescription = "设置提醒",
-                        tint = if (reminderTime != null) accentColor else Color(0xFF757575),
+                        tint = if (reminderTime != null) accentColor else secondaryTextColor,
                         modifier = Modifier
                             .size(24.dp)
                             .clickable(
@@ -154,7 +156,7 @@ fun AddTodoScreen(
                     Icon(
                         imageVector = Icons.Outlined.Flag,
                         contentDescription = "设置优先级",
-                        tint = if (isPriority) iconTint else Color(0xFF757575),
+                        tint = if (isPriority) iconTint else secondaryTextColor,
                         modifier = Modifier
                             .size(24.dp)
                             .clickable(
@@ -169,7 +171,7 @@ fun AddTodoScreen(
                             .size(24.dp)
                             .clip(CircleShape)
                             .background(Color(cardColor))
-                            .border(1.5.dp, Color(0xFFBDBDBD), CircleShape)
+                            .border(1.5.dp, dividerColor, CircleShape)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -238,7 +240,7 @@ private fun AddTodoTopBar(
             text = titleText,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF212121),
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center
         )
@@ -246,7 +248,7 @@ private fun AddTodoTopBar(
         Text(
             text = "完成",
             fontSize = 16.sp,
-            color = if (confirmEnabled) accentColor else Color(0xFFBDBDBD),
+            color = if (confirmEnabled) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -280,7 +282,7 @@ private fun ColorPickerRow(
                         if (selectedColor == color) {
                             Modifier.border(2.5.dp, iconTint, CircleShape)
                         } else {
-                            Modifier.border(1.dp, Color(0xFFE0E0E0), CircleShape)
+                            Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                         }
                     )
                     .clickable { onColorSelected(color) }

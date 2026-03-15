@@ -372,6 +372,8 @@ private fun SearchResultRow(
 ) {
     val primaryContent = if (item.title.isBlank()) item.content else item.title
     val secondaryContent = if (item.title.isBlank()) "" else item.content
+    val highlightBackground = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+    val highlightTextColor = MaterialTheme.colorScheme.onPrimaryContainer
 
     Column(
         modifier = Modifier
@@ -389,7 +391,7 @@ private fun SearchResultRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = buildHighlightedText(item.categoryLabel, query),
+                text = buildHighlightedText(item.categoryLabel, query, highlightBackground, highlightTextColor),
                 modifier = Modifier.weight(1f),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -422,7 +424,7 @@ private fun SearchResultRow(
             Column(modifier = Modifier.weight(1f)) {
                 if (primaryContent.isNotBlank()) {
                     Text(
-                        text = buildHighlightedText(primaryContent, query),
+                        text = buildHighlightedText(primaryContent, query, highlightBackground, highlightTextColor),
                         fontSize = if (item.title.isBlank()) 19.sp else 18.sp,
                         lineHeight = 28.sp,
                         fontWeight = if (item.title.isBlank()) FontWeight.Medium else FontWeight.SemiBold,
@@ -433,7 +435,7 @@ private fun SearchResultRow(
                 if (secondaryContent.isNotBlank()) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = buildHighlightedText(secondaryContent, query),
+                        text = buildHighlightedText(secondaryContent, query, highlightBackground, highlightTextColor),
                         fontSize = 15.sp,
                         lineHeight = 23.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -494,6 +496,8 @@ private fun SearchEmptyState(
 private fun buildHighlightedText(
     text: String,
     query: String,
+    highlightBackground: Color,
+    highlightTextColor: Color,
 ): AnnotatedString {
     if (text.isBlank() || query.isBlank()) return AnnotatedString(text)
 
@@ -513,8 +517,8 @@ private fun buildHighlightedText(
             }
             withStyle(
                 SpanStyle(
-                    background = Color(0xFFFFEB3B),
-                    color = Color(0xFF212121),
+                    background = highlightBackground,
+                    color = highlightTextColor,
                 ),
             ) {
                 append(text.substring(matchIndex, matchIndex + query.length))

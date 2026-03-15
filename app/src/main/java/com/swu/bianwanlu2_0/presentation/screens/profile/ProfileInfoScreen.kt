@@ -188,7 +188,7 @@ fun ProfileInfoScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 ProfileInfoRow(
                     title = "账号注销",
-                    titleColor = Color(0xFFE65E4F),
+                    titleColor = MaterialTheme.colorScheme.error,
                     onClick = {
                         if (state.hasLocalAccount) {
                             showCancelAccountConfirm = true
@@ -214,7 +214,7 @@ fun ProfileInfoScreen(
                 .height(52.dp),
             enabled = state.isLoggedIn,
             shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5A9CF0)),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
         ) {
             Text(text = "退出登录", fontSize = 18.sp)
         }
@@ -272,7 +272,7 @@ fun ProfileInfoScreen(
             text = {
                 Text(
                     "确定注销本地账号吗？注销后登录凭证与个人信息会被清空，但便签与待办数据不会被删除。",
-                    color = Color(0xFF616161),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
             confirmButton = {
@@ -379,7 +379,7 @@ private fun EditTextDialog(
                 if (!errorMessage.isNullOrBlank()) {
                     Text(
                         text = errorMessage.orEmpty(),
-                        color = Color(0xFFE65E4F),
+                        color = MaterialTheme.colorScheme.error,
                         fontSize = 13.sp,
                     )
                 }

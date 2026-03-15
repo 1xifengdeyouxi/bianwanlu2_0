@@ -26,6 +26,13 @@ class CategorySelectionStore @Inject constructor(
         }
     }
 
+    fun clearAll() {
+        preferences.edit()
+            .remove(keyFor(CategoryType.NOTE))
+            .remove(keyFor(CategoryType.TODO))
+            .apply()
+    }
+
     private fun keyFor(type: CategoryType): String {
         return when (type) {
             CategoryType.NOTE -> "selected_note_category_id"

@@ -11,6 +11,7 @@ import com.swu.bianwanlu2_0.data.local.entity.TimelineActionType
 import com.swu.bianwanlu2_0.data.local.entity.TimelineEvent
 import com.swu.bianwanlu2_0.data.local.entity.TimelineItemType
 import com.swu.bianwanlu2_0.data.repository.CategoryRepository
+import com.swu.bianwanlu2_0.data.reminder.ReminderCoordinator
 import com.swu.bianwanlu2_0.data.repository.NoteRepository
 import com.swu.bianwanlu2_0.data.repository.TimelineEventRepository
 import com.swu.bianwanlu2_0.utils.GUEST_USER_ID
@@ -48,6 +49,7 @@ class NoteViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val categorySelectionStore: CategorySelectionStore,
     private val timelineEventRepository: TimelineEventRepository,
+    private val reminderCoordinator: ReminderCoordinator,
 ) : ViewModel() {
 
     val categories: StateFlow<List<Category>> = categoryRepository
@@ -216,6 +218,7 @@ class NoteViewModel @Inject constructor(
                     updatedAt = now,
                 )
                 noteRepository.update(updatedNote)
+                reminderCoordinator.syncNote(updatedNote)
                 logNoteEvent(updatedNote, TimelineActionType.UPDATE, now)
             }
             clearSelection()
@@ -240,6 +243,7 @@ class NoteViewModel @Inject constructor(
                         updatedAt = now,
                     )
                     noteRepository.update(updatedNote)
+                    reminderCoordinator.syncNote(updatedNote)
                     logNoteEvent(updatedNote, TimelineActionType.REMINDER, now, reminderTime)
                 }
             }
@@ -255,6 +259,7 @@ class NoteViewModel @Inject constructor(
             selectedIds.forEach { id ->
                 noteRepository.getNoteById(id).first()?.let { note ->
                     logNoteEvent(note, TimelineActionType.DELETE)
+                    reminderCoordinator.removeNote(note)
                     noteRepository.delete(note)
                 }
             }
@@ -306,11 +311,16 @@ class NoteViewModel @Inject constructor(
             )
             val noteId = noteRepository.insert(newNote)
             val savedNote = newNote.copy(id = noteId)
+            reminderCoordinator.syncNote(savedNote)
             logNoteEvent(savedNote, TimelineActionType.CREATE, now)
             if (reminderTime != null) {
                 logNoteEvent(savedNote, TimelineActionType.REMINDER, now, reminderTime)
             }
         }
+    }
+
+    suspend fun getNoteById(id: Long): Note? {
+        return noteRepository.getNoteById(id).first()
     }
 
     fun updateNote(
@@ -348,6 +358,7 @@ class NoteViewModel @Inject constructor(
                 updatedAt = now,
             )
             noteRepository.update(updatedNote)
+            reminderCoordinator.syncNote(updatedNote)
             if (hasContentChanged) {
                 logNoteEvent(updatedNote, TimelineActionType.UPDATE, now)
             }
@@ -366,6 +377,7 @@ class NoteViewModel @Inject constructor(
                 updatedAt = now,
             )
             noteRepository.update(updatedNote)
+            reminderCoordinator.syncNote(updatedNote)
             logNoteEvent(
                 updatedNote,
                 actionType = if (newStatus == NoteStatus.COMPLETED) TimelineActionType.COMPLETE else TimelineActionType.UPDATE,
@@ -377,6 +389,7 @@ class NoteViewModel @Inject constructor(
     fun deleteNote(note: Note) {
         viewModelScope.launch {
             logNoteEvent(note, TimelineActionType.DELETE)
+            reminderCoordinator.removeNote(note)
             noteRepository.delete(note)
         }
     }

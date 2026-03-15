@@ -25,6 +25,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -76,7 +76,7 @@ fun AuthScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF7F7F7))
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
@@ -112,7 +112,7 @@ fun AuthScreen(
             Spacer(modifier = Modifier.weight(1f))
             if (allowSkip) {
                 TextButton(onClick = onSkip) {
-                    Text(text = "暂不登录", color = Color(0xFF5A9CF0))
+                    Text(text = "暂不登录", color = MaterialTheme.colorScheme.primary)
                 }
             } else {
                 Spacer(modifier = Modifier.size(40.dp))
@@ -125,7 +125,7 @@ fun AuthScreen(
             modifier = Modifier
                 .size(72.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFEAF3FF))
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f))
                 .align(Alignment.CenterHorizontally),
             contentAlignment = Alignment.Center,
         ) {
@@ -143,7 +143,7 @@ fun AuthScreen(
             text = "欢迎使用便玩录",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF212121),
+            color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
         )
@@ -151,7 +151,7 @@ fun AuthScreen(
         Text(
             text = "你可以选择登录、注册，也可以先以游客身份使用",
             fontSize = 14.sp,
-            color = Color(0xFF8D8D8D),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
         )
@@ -186,7 +186,7 @@ fun AuthScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             shape = RoundedCornerShape(24.dp),
         ) {
             Column(
@@ -219,7 +219,7 @@ fun AuthScreen(
                     trailingIcon = {
                         Text(
                             text = if (passwordVisible) "隐藏" else "显示",
-                            color = Color(0xFF5A9CF0),
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 12.sp,
                             modifier = Modifier.clickable(
                                 interactionSource = remember { MutableInteractionSource() },
@@ -244,7 +244,7 @@ fun AuthScreen(
                         trailingIcon = {
                             Text(
                                 text = if (confirmPasswordVisible) "隐藏" else "显示",
-                                color = Color(0xFF5A9CF0),
+                                color = MaterialTheme.colorScheme.primary,
                                 fontSize = 12.sp,
                                 modifier = Modifier.clickable(
                                     interactionSource = remember { MutableInteractionSource() },
@@ -258,7 +258,7 @@ fun AuthScreen(
                 if (!errorMessage.isNullOrBlank()) {
                     Text(
                         text = errorMessage.orEmpty(),
-                        color = Color(0xFFE65E4F),
+                        color = MaterialTheme.colorScheme.error,
                         fontSize = 13.sp,
                     )
                 }
@@ -303,17 +303,18 @@ private fun AuthModeChip(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(if (selected) Color(0xFF5A9CF0) else Color.White)
+            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick)
             .padding(vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
-            color = if (selected) Color.White else Color(0xFF5A5A5A),
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
         )
     }
 }
+
 

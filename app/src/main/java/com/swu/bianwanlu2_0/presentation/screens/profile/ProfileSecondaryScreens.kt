@@ -1,6 +1,7 @@
 ﻿package com.swu.bianwanlu2_0.presentation.screens.profile
 
 import android.Manifest
+import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +48,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,28 +60,40 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.swu.bianwanlu2_0.R
 import com.swu.bianwanlu2_0.ui.theme.AppFontSizeOption
 import com.swu.bianwanlu2_0.ui.theme.AppSkinOption
 import com.swu.bianwanlu2_0.ui.theme.AppThemeMode
 import com.swu.bianwanlu2_0.ui.theme.LocalAppIconTint
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
 fun ReminderSettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenExactAlarmGuide: () -> Unit = {},
     viewModel: ReminderSettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val vibrationEnabled by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
+    val calendarSyncEnabled by viewModel.calendarSyncEnabled.collectAsStateWithLifecycle()
+    val message by viewModel.message.collectAsStateWithLifecycle()
     var notificationEnabled by remember { mutableStateOf(isNotificationPermissionEnabled(context)) }
+    var exactAlarmEnabled by remember { mutableStateOf(isExactAlarmPermissionEnabled(context)) }
 
     val notificationSettingsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
@@ -90,24 +106,55 @@ fun ReminderSettingsScreen(
     ) { granted ->
         notificationEnabled = isNotificationPermissionEnabled(context)
         if (granted && notificationEnabled) {
-            Toast.makeText(context, "通知权限已开启", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "???????", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(context, "请在系统设置中开启通知权限", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "?????????????", Toast.LENGTH_SHORT).show()
             notificationSettingsLauncher.launch(createNotificationSettingsIntent(context))
         }
     }
 
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permissions ->
+        val granted = permissions.values.all { it }
+        if (granted && hasCalendarPermissions(context)) {
+            viewModel.enableCalendarSync()
+        } else {
+            Toast.makeText(context, "?????????????", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                notificationEnabled = isNotificationPermissionEnabled(context)
+                exactAlarmEnabled = isExactAlarmPermissionEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(message) {
+        message?.let { toastText ->
+            Toast.makeText(context, toastText, Toast.LENGTH_SHORT).show()
+            viewModel.consumeMessage()
+        }
+    }
+
     ProfileScaffold(
-        title = "提醒设置",
+        title = "????",
         onBack = onBack,
         modifier = modifier,
     ) {
         SettingActionRow(
-            title = "消息提醒",
-            value = if (notificationEnabled) "已开启" else "去开启",
+            title = "????",
+            value = if (notificationEnabled) "???" else "???",
             onClick = {
                 if (notificationEnabled) {
-                    Toast.makeText(context, "系统通知权限已开启", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "?????????", Toast.LENGTH_SHORT).show()
                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     val runtimePermissionGranted = ContextCompat.checkSelfPermission(
                         context,
@@ -123,46 +170,556 @@ fun ReminderSettingsScreen(
                 }
             },
         )
+        SettingActionRow(
+            title = "????",
+            value = if (exactAlarmEnabled) "???" else "???",
+            onClick = onOpenExactAlarmGuide,
+        )
         SettingSwitchRow(
-            title = "震动",
+            title = "??",
             checked = vibrationEnabled,
             onCheckedChange = viewModel::setVibrationEnabled,
         )
+        SettingSwitchRow(
+            title = "???????",
+            checked = calendarSyncEnabled,
+            onCheckedChange = { enabled ->
+                if (enabled) {
+                    if (hasCalendarPermissions(context)) {
+                        viewModel.enableCalendarSync()
+                    } else {
+                        calendarPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.READ_CALENDAR,
+                                Manifest.permission.WRITE_CALENDAR,
+                            ),
+                        )
+                    }
+                } else {
+                    viewModel.disableCalendarSync()
+                }
+            },
+        )
+        ReminderSettingsHintCard()
     }
+}
+
+@Composable
+fun ExactAlarmGuideScreen(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var exactAlarmEnabled by remember { mutableStateOf(isExactAlarmPermissionEnabled(context)) }
+
+    val exactAlarmSettingsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) {
+        exactAlarmEnabled = isExactAlarmPermissionEnabled(context)
+    }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                exactAlarmEnabled = isExactAlarmPermissionEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    ProfileScaffold(
+        title = "????",
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        ExactAlarmGuideStatusCard(enabled = exactAlarmEnabled)
+        ExactAlarmGuideActionCard(
+            enabled = exactAlarmEnabled,
+            onClick = {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                    Toast.makeText(context, "??????????????", Toast.LENGTH_SHORT).show()
+                } else {
+                    exactAlarmSettingsLauncher.launch(createExactAlarmSettingsIntent(context))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ExactAlarmGuideStatusCard(enabled: Boolean) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 18.dp, vertical = 18.dp),
+    ) {
+        Text(
+            text = "???????",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        ReminderSettingsHintLine(text = "??????????????????????")
+        ReminderSettingsHintLine(text = "??????????????15?????????????")
+        ReminderSettingsHintLine(text = "??????????????????????????????")
+        Spacer(modifier = Modifier.height(14.dp))
+        ExactAlarmStatusBadge(
+            text = if (enabled) "????????" else "????????",
+            background = if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.error.copy(alpha = 0.10f),
+            contentColor = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+@Composable
+private fun ExactAlarmGuideActionCard(
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 18.dp, vertical = 18.dp),
+    ) {
+        Text(
+            text = "????",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = if (enabled) "?????????????????????????" else "?????????????????????????",
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        FilledGuideButton(
+            text = if (enabled) "????" else "????",
+            onClick = onClick,
+        )
+    }
+}
+
+@Composable
+private fun ExactAlarmStatusBadge(
+    text: String,
+    background: Color,
+    contentColor: Color,
+) {
+    Box(
+        modifier = Modifier
+            .background(background, RoundedCornerShape(999.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = text,
+            fontSize = 13.sp,
+            color = contentColor,
+        )
+    }
+}
+
+@Composable
+private fun FilledGuideButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    minHeight: Dp = 48.dp,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(minHeight)
+            .background(
+                color = MaterialTheme.colorScheme.primary,
+                shape = RoundedCornerShape(16.dp),
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onPrimary,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun ReminderSettingsHintCard() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 18.dp, vertical = 18.dp),
+    ) {
+        Text(
+            text = "????",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        ReminderSettingsHintLine(text = "????????????????15?????????")
+        ReminderSettingsHintLine(text = "????????????????????????")
+        ReminderSettingsHintLine(text = "????????????????????????????")
+        ReminderSettingsHintLine(text = "??????????????????????????????????")
+    }
+}
+
+@Composable
+private fun ReminderSettingsHintLine(text: String) {
+    Text(
+        text = "? $text",
+        fontSize = 14.sp,
+        lineHeight = 22.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp),
+    )
 }
 
 @Composable
 fun DataAndSyncScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    launchAction: DataSyncLaunchAction? = null,
+    onLaunchActionConsumed: () -> Unit = {},
+    viewModel: DataAndSyncViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showClearDialog by remember { mutableStateOf(false) }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val inputStream = runCatching {
+            context.contentResolver.openInputStream(uri)
+        }.getOrNull()
+        viewModel.prepareImport(inputStream)
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val outputStream = runCatching {
+            context.contentResolver.openOutputStream(uri, "w")
+        }.getOrNull()
+        viewModel.exportBackup(outputStream)
+    }
+
+    LaunchedEffect(uiState.message) {
+        uiState.message?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            viewModel.consumeMessage()
+        }
+    }
+
+    LaunchedEffect(launchAction) {
+        when (launchAction) {
+            DataSyncLaunchAction.Import -> {
+                onLaunchActionConsumed()
+                importLauncher.launch(arrayOf("application/json", "text/plain"))
+            }
+
+            DataSyncLaunchAction.Export -> {
+                onLaunchActionConsumed()
+                exportLauncher.launch(generateBackupFileName())
+            }
+
+            null -> Unit
+        }
+    }
 
     ProfileScaffold(
         title = "数据与同步",
         onBack = onBack,
         modifier = modifier,
     ) {
+        DataSyncNoticeCard()
         SettingActionRow(
             title = "数据导入",
+            value = "覆盖恢复",
             onClick = {
-                Toast.makeText(context, "数据导入功能暂未开放", Toast.LENGTH_SHORT).show()
+                importLauncher.launch(arrayOf("application/json", "text/plain"))
             },
         )
         SettingActionRow(
             title = "数据导出",
+            value = "JSON 备份",
             onClick = {
-                Toast.makeText(context, "数据导出功能暂未开放", Toast.LENGTH_SHORT).show()
+                exportLauncher.launch(generateBackupFileName())
             },
         )
         SettingActionRow(
             title = "删除数据",
+            value = "清空并重建默认分类",
             onClick = {
-                Toast.makeText(context, "删除数据功能暂未开放", Toast.LENGTH_SHORT).show()
+                showClearDialog = true
             },
         )
     }
+
+    uiState.importPreview?.let { preview ->
+        DataImportPreviewDialog(
+            preview = preview,
+            onDismiss = viewModel::dismissImportPreview,
+            onConfirm = viewModel::confirmImport,
+        )
+    }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = {
+                Text(
+                    text = "确认删除本地数据",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            },
+            text = {
+                Text(
+                    text = "删除后会清空当前设备上的笔记、待办、时间轴和分类数据，并自动重建默认分类，此操作不可撤销。",
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmButton = {
+                Text(
+                    text = "确认删除",
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        showClearDialog = false
+                        viewModel.clearAllData()
+                    },
+                )
+            },
+            dismissButton = {
+                Text(
+                    text = "取消",
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { showClearDialog = false },
+                    ),
+                )
+            },
+        )
+    }
+
+    if (uiState.isLoading) {
+        DataSyncLoadingDialog(message = uiState.loadingMessage ?: "处理中…")
+    }
 }
+
+@Composable
+private fun DataSyncNoticeCard() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 18.dp, vertical = 18.dp),
+    ) {
+        Text(
+            text = "备份说明",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        DataSyncHint(text = "导出会保存笔记、待办、分类、时间轴和提醒时间。")
+        DataSyncHint(text = "导入会覆盖当前本地数据，导入前建议先导出一次。")
+        DataSyncHint(text = "含图片的笔记会保存图片引用，跨设备恢复时图片可能需要重新添加。")
+    }
+}
+
+@Composable
+private fun DataSyncHint(text: String) {
+    Text(
+        text = "• $text",
+        fontSize = 14.sp,
+        lineHeight = 22.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp),
+    )
+}
+
+@Composable
+private fun DataImportPreviewDialog(
+    preview: DataImportPreviewUi,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "确认覆盖恢复",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        text = {
+            Column {
+                preview.exportedAt?.let { exportedAt ->
+                    Text(
+                        text = "备份时间：${formatDataSyncTime(exportedAt)}",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+                DataSyncPreviewLine(label = "分类", value = preview.categoryCount)
+                DataSyncPreviewLine(label = "笔记", value = preview.noteCount)
+                DataSyncPreviewLine(label = "待办", value = preview.todoCount)
+                DataSyncPreviewLine(label = "时间轴", value = preview.timelineEventCount)
+                if (preview.warnings.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    preview.warnings.forEach { warning ->
+                        DataSyncHint(text = warning)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Text(
+                text = "开始导入",
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onConfirm,
+                ),
+            )
+        },
+        dismissButton = {
+            Text(
+                text = "取消",
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                ),
+            )
+        },
+    )
+}
+
+@Composable
+private fun DataSyncPreviewLine(
+    label: String,
+    value: Int,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = "$value 条",
+            fontSize = 15.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun DataSyncLoadingDialog(message: String) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = {
+            Text(
+                text = message,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        },
+        text = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.4.dp)
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = "请稍候，正在处理你的本地数据",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+private fun generateBackupFileName(): String {
+    val formatter = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+    return "便玩录备份_${formatter.format(Date())}.json"
+}
+
+private fun formatDataSyncTime(timeMillis: Long): String {
+    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    return formatter.format(Date(timeMillis))
+}
+
+enum class DataSyncLaunchAction {
+    Import,
+    Export,
+}
+
 @Composable
 fun GeneralSettingsScreen(
     onBack: () -> Unit,
@@ -865,7 +1422,7 @@ private fun FontSizeSettingScreen(
                     Text(
                         text = label,
                         fontSize = 15.sp,
-                        color = Color(0xFF616161),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -1098,6 +1655,17 @@ private fun <T> SingleChoiceDialog(
     )
 }
 
+private fun hasCalendarPermissions(context: Context): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.READ_CALENDAR,
+    ) == PackageManager.PERMISSION_GRANTED &&
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.WRITE_CALENDAR,
+        ) == PackageManager.PERMISSION_GRANTED
+}
+
 private fun isNotificationPermissionEnabled(context: Context): Boolean {
     val permissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         ContextCompat.checkSelfPermission(
@@ -1108,6 +1676,24 @@ private fun isNotificationPermissionEnabled(context: Context): Boolean {
         true
     }
     return permissionGranted && NotificationManagerCompat.from(context).areNotificationsEnabled()
+}
+
+private fun isExactAlarmPermissionEnabled(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+    val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return false
+    return alarmManager.canScheduleExactAlarms()
+}
+
+private fun createExactAlarmSettingsIntent(context: Context): Intent {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+        }
+    } else {
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+        }
+    }
 }
 
 private fun createNotificationSettingsIntent(context: Context): Intent {

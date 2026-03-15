@@ -18,4 +18,7 @@ interface TimelineEventDao {
 
     @Query("SELECT * FROM timeline_events WHERE user_id = :userId ORDER BY occurred_at DESC, id DESC")
     fun getAllByUser(userId: Long): Flow<List<TimelineEvent>>
+
+    @Query("DELETE FROM timeline_events WHERE user_id = :userId")
+    suspend fun deleteAllByUser(userId: Long)
 }

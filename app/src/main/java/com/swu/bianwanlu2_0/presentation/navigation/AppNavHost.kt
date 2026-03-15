@@ -47,8 +47,10 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import android.widget.Toast
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -64,10 +66,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swu.bianwanlu2_0.data.local.entity.Category
+import com.swu.bianwanlu2_0.data.reminder.ReminderDeepLink
+import com.swu.bianwanlu2_0.data.reminder.ReminderItemType
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
 import com.swu.bianwanlu2_0.presentation.components.AddCategoryDialog
 import com.swu.bianwanlu2_0.presentation.components.AppDrawerContent
@@ -84,12 +89,14 @@ import com.swu.bianwanlu2_0.presentation.screens.profile.AboutBianwanluScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.AccountViewModel
 import com.swu.bianwanlu2_0.presentation.screens.profile.AuthMode
 import com.swu.bianwanlu2_0.presentation.screens.profile.AuthScreen
+import com.swu.bianwanlu2_0.presentation.screens.profile.DataSyncLaunchAction
 import com.swu.bianwanlu2_0.presentation.screens.profile.DataAndSyncScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.GeneralSettingsScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.MyMenuAction
 import com.swu.bianwanlu2_0.presentation.screens.profile.MyScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileActionDialog
 import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileAvatarImage
+import com.swu.bianwanlu2_0.presentation.screens.profile.ExactAlarmGuideScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileInfoScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.ReminderSettingsScreen
 import com.swu.bianwanlu2_0.presentation.screens.search.SearchScreen
@@ -110,6 +117,7 @@ private enum class MyPageDestination {
     Auth,
     CategoryManage,
     ReminderSettings,
+    ExactAlarmGuide,
     DataAndSync,
     GeneralSettings,
     About,
@@ -167,7 +175,11 @@ private fun appDestinationIndex(destination: AppDestination): Int = when (destin
 }
 
 @Composable
-fun AppNavHost(modifier: Modifier = Modifier) {
+fun AppNavHost(
+    modifier: Modifier = Modifier,
+    pendingReminderDeepLink: ReminderDeepLink? = null,
+    onReminderDeepLinkConsumed: () -> Unit = {},
+) {
     var currentDestination by remember {
         mutableStateOf<AppDestination>(AppDestination.Notes)
     }
@@ -175,6 +187,8 @@ fun AppNavHost(modifier: Modifier = Modifier) {
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    val context = LocalContext.current
 
     val noteViewModel: NoteViewModel = hiltViewModel()
     val todoViewModel: TodoViewModel = hiltViewModel()
@@ -250,7 +264,8 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     var showBatchTodoReminderDialog by remember { mutableStateOf(false) }
     var showDeleteTodosConfirm by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
-    var pendingFeatureTitle by remember { mutableStateOf<String?>(null) }
+    var pendingDataSyncLaunchAction by remember { mutableStateOf<DataSyncLaunchAction?>(value = null) }
+    var featureInProgressMessage by remember { mutableStateOf<String?>(null) }
     val isToolbarArrowExpanded = when {
         hasCategoryDropdown -> showCategoryDropdown
         hasCalendarMonthPicker -> calendarMonthPickerVisible
@@ -313,6 +328,12 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         }
     }
 
+    fun showFeatureInProgressDialog(message: String) {
+        showContactDialog = false
+        showOverflowMenu = false
+        featureInProgressMessage = message
+    }
+
     fun navigateMainDestination(destination: AppDestination) {
         if (destination == currentDestination) return
         if (currentDestination == AppDestination.Notes) {
@@ -341,6 +362,76 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         calendarViewModel.dismissMonthPicker()
         mainDestinationStack.removeAt(mainDestinationStack.lastIndex)
         currentDestination = mainDestinationStack.last()
+    }
+
+    suspend fun openReminderDeepLink(deepLink: ReminderDeepLink) {
+        hostMotionDirection = NavigationMotionDirection.Forward
+        showContactDialog = false
+        showOverflowMenu = false
+        showCategoryDropdown = false
+        showSearch = false
+        showAddNote = false
+        showAddTodo = false
+        showMyPage = false
+        showCategoryManage = false
+        editingNote = null
+        editingTodo = null
+        resetMyPageStack()
+        if (drawerState.isOpen) {
+            drawerState.close()
+        }
+        calendarViewModel.dismissMonthPicker()
+
+        when (deepLink.itemType) {
+            ReminderItemType.NOTE -> {
+                if (noteCategories.isEmpty()) return
+                val note = noteViewModel.getNoteById(deepLink.itemId)
+                if (note == null) {
+                    Toast.makeText(context, "???????????", Toast.LENGTH_SHORT).show()
+                    onReminderDeepLinkConsumed()
+                    return
+                }
+                mainDestinationStack.clear()
+                mainDestinationStack.add(AppDestination.Notes)
+                currentDestination = AppDestination.Notes
+                note.categoryId?.let { categoryId ->
+                    noteViewModel.selectCategory(noteCategories.firstOrNull { it.id == categoryId })
+                }
+                editingNote = note
+            }
+
+            ReminderItemType.TODO -> {
+                if (todoCategories.isEmpty()) return
+                val todo = todoViewModel.getTodoById(deepLink.itemId)
+                if (todo == null) {
+                    Toast.makeText(context, "???????????", Toast.LENGTH_SHORT).show()
+                    onReminderDeepLinkConsumed()
+                    return
+                }
+                mainDestinationStack.clear()
+                mainDestinationStack.add(AppDestination.Todo)
+                currentDestination = AppDestination.Todo
+                todo.categoryId?.let { categoryId ->
+                    todoViewModel.selectCategory(todoCategories.firstOrNull { it.id == categoryId })
+                }
+                editingTodo = todo
+            }
+        }
+        onReminderDeepLinkConsumed()
+    }
+
+    LaunchedEffect(
+        pendingReminderDeepLink,
+        accountState.hasSeenAuthChoice,
+        noteCategories,
+        todoCategories,
+    ) {
+        val deepLink = pendingReminderDeepLink ?: return@LaunchedEffect
+        if (!accountState.hasSeenAuthChoice) return@LaunchedEffect
+        when (deepLink.itemType) {
+            ReminderItemType.NOTE -> if (noteCategories.isNotEmpty()) openReminderDeepLink(deepLink)
+            ReminderItemType.TODO -> if (todoCategories.isNotEmpty()) openReminderDeepLink(deepLink)
+        }
     }
 
     val hostScreen = when {
@@ -428,7 +519,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                         when (action) {
                             MyMenuAction.CategoryManage -> pushMyPage(MyPageDestination.CategoryManage)
                             MyMenuAction.ReminderSettings -> pushMyPage(MyPageDestination.ReminderSettings)
-                            MyMenuAction.DataAndSync -> pushMyPage(MyPageDestination.DataAndSync)
+                            MyMenuAction.DataAndSync -> {
+                                pendingDataSyncLaunchAction = null
+                                showFeatureInProgressDialog("数据与同步功能正在完善中")
+                            }
                             MyMenuAction.GeneralSettings -> pushMyPage(MyPageDestination.GeneralSettings)
                             MyMenuAction.ContactUs -> showContactDialog = true
                             MyMenuAction.About -> pushMyPage(MyPageDestination.About)
@@ -478,11 +572,22 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             }
 
             MyPageDestination.ReminderSettings -> {
-                ReminderSettingsScreen(onBack = { popMyPageOrClose() })
+                ReminderSettingsScreen(
+                    onBack = { popMyPageOrClose() },
+                    onOpenExactAlarmGuide = { pushMyPage(MyPageDestination.ExactAlarmGuide) },
+                )
+            }
+
+            MyPageDestination.ExactAlarmGuide -> {
+                ExactAlarmGuideScreen(onBack = { popMyPageOrClose() })
             }
 
             MyPageDestination.DataAndSync -> {
-                DataAndSyncScreen(onBack = { popMyPageOrClose() })
+                DataAndSyncScreen(
+                    onBack = { popMyPageOrClose() },
+                    launchAction = pendingDataSyncLaunchAction,
+                    onLaunchActionConsumed = { pendingDataSyncLaunchAction = null },
+                )
             }
 
             MyPageDestination.GeneralSettings -> {
@@ -536,8 +641,18 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                         openMyPage()
                         scope.launch { drawerState.close() }
                     },
-                    onSyncClick = { scope.launch { drawerState.close() } },
-                    onGameClick = { scope.launch { drawerState.close() } },
+                    onSyncClick = {
+                        scope.launch {
+                            drawerState.close()
+                            showFeatureInProgressDialog("同步功能正在完善中")
+                        }
+                    },
+                    onGameClick = {
+                        scope.launch {
+                            drawerState.close()
+                            showFeatureInProgressDialog("小游戏功能正在完善中")
+                        }
+                    },
                 )
             },
             gesturesEnabled = true,
@@ -621,11 +736,13 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                                     }
 
                                     MainOverflowAction.Import -> {
-                                        pendingFeatureTitle = "数据导入"
+                                        pendingDataSyncLaunchAction = DataSyncLaunchAction.Import
+                                        openStandaloneMyPage(MyPageDestination.DataAndSync)
                                     }
 
                                     MainOverflowAction.Export -> {
-                                        pendingFeatureTitle = "数据导出"
+                                        pendingDataSyncLaunchAction = DataSyncLaunchAction.Export
+                                        openStandaloneMyPage(MyPageDestination.DataAndSync)
                                     }
 
                                     MainOverflowAction.GeneralSettings -> {
@@ -992,20 +1109,6 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             },
         )
     }
-
-    if (pendingFeatureTitle != null) {
-        AlertDialog(
-            onDismissRequest = { pendingFeatureTitle = null },
-            title = { Text(pendingFeatureTitle!!) },
-            text = { Text("该功能暂未开放，后续版本会继续完善。", color = Color(0xFF616161)) },
-            confirmButton = {
-                TextButton(onClick = { pendingFeatureTitle = null }) {
-                    Text("我知道了", color = Color(0xFF212121))
-                }
-            },
-        )
-    }
-
     if (showAddCategoryDialog) {
         val dialogDefaultType = when (currentDestination) {
             AppDestination.Notes -> CategoryType.NOTE
@@ -1018,6 +1121,19 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             onConfirm = { name, type ->
                 categoryViewModel.addCategory(name, type)
                 showAddCategoryDialog = false
+            },
+        )
+    }
+
+    featureInProgressMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { featureInProgressMessage = null },
+            title = { Text("温馨提示") },
+            text = { Text(message, color = Color(0xFF616161)) },
+            confirmButton = {
+                TextButton(onClick = { featureInProgressMessage = null }) {
+                    Text("我知道了", color = Color(0xFF212121))
+                }
             },
         )
     }

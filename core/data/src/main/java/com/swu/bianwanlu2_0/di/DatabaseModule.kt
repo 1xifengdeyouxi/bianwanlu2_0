@@ -8,6 +8,8 @@ import com.swu.bianwanlu2_0.data.local.dao.NoteDao
 import com.swu.bianwanlu2_0.data.local.dao.TimelineEventDao
 import com.swu.bianwanlu2_0.data.local.dao.TodoDao
 import com.swu.bianwanlu2_0.data.repository.CategoryRepository
+import com.swu.bianwanlu2_0.data.repository.DataBackupRepository
+import com.swu.bianwanlu2_0.data.repository.DataBackupRepositoryImpl
 import com.swu.bianwanlu2_0.data.repository.CategoryRepositoryImpl
 import com.swu.bianwanlu2_0.data.repository.NoteRepository
 import com.swu.bianwanlu2_0.data.repository.NoteRepositoryImpl
@@ -68,6 +70,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindCategoryRepository(impl: CategoryRepositoryImpl): CategoryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindDataBackupRepository(impl: DataBackupRepositoryImpl): DataBackupRepository
 
     @Binds
     @Singleton

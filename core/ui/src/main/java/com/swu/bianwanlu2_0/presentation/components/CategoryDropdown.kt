@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,12 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swu.bianwanlu2_0.data.local.entity.Category
-import com.swu.bianwanlu2_0.ui.theme.NoteRed
 
 @Composable
 fun CategoryDropdown(
@@ -78,7 +77,7 @@ fun CategoryDropdown(
                 .fillMaxWidth()
                 .shadow(4.dp, RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)),
             shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                 categories.forEach { category ->
@@ -94,7 +93,7 @@ fun CategoryDropdown(
 
                 HorizontalDivider(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    color = Color(0xFFEEEEEE),
+                    color = MaterialTheme.colorScheme.outlineVariant,
                 )
 
                 Row(
@@ -119,10 +118,10 @@ fun CategoryDropdown(
                             Icons.Outlined.Add,
                             contentDescription = "新增分类",
                             modifier = Modifier.size(18.dp),
-                            tint = Color(0xFF757575),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("新增分类", fontSize = 14.sp, color = Color(0xFF757575))
+                        Text("新增分类", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
                     Row(
@@ -136,13 +135,13 @@ fun CategoryDropdown(
                             },
                         ),
                     ) {
-                        Text("分类管理", fontSize = 14.sp, color = Color(0xFF757575))
+                        Text("分类管理", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.width(2.dp))
                         Icon(
                             Icons.Outlined.ChevronRight,
                             contentDescription = "分类管理",
                             modifier = Modifier.size(18.dp),
-                            tint = Color(0xFF757575),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -168,23 +167,24 @@ private fun CategoryItem(
             Icons.Outlined.BookmarkBorder,
             contentDescription = null,
             modifier = Modifier.size(20.dp),
-            tint = Color(0xFF757575)
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = name,
             fontSize = 15.sp,
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
-            color = Color(0xFF212121),
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
         if (isSelected) {
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = "已选中",
-                tint = NoteRed,
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp)
             )
         }
     }
 }
+

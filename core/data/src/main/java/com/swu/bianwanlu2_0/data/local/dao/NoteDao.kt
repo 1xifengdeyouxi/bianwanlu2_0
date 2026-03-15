@@ -15,6 +15,9 @@ interface NoteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(note: Note): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(notes: List<Note>)
+
     @Update
     suspend fun update(note: Note)
 
@@ -44,4 +47,7 @@ interface NoteDao {
 
     @Query("DELETE FROM notes WHERE category_id = :categoryId")
     suspend fun deleteByCategory(categoryId: Long)
+
+    @Query("DELETE FROM notes WHERE user_id = :userId")
+    suspend fun deleteAllByUser(userId: Long)
 }

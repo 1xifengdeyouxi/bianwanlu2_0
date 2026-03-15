@@ -10,6 +10,7 @@ import com.swu.bianwanlu2_0.data.local.entity.TimelineEvent
 import com.swu.bianwanlu2_0.data.local.entity.TimelineItemType
 import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.data.local.entity.TodoStatus
+import com.swu.bianwanlu2_0.data.reminder.ReminderCoordinator
 import com.swu.bianwanlu2_0.data.repository.CategoryRepository
 import com.swu.bianwanlu2_0.data.repository.TimelineEventRepository
 import com.swu.bianwanlu2_0.data.repository.TodoRepository
@@ -47,6 +48,7 @@ class TodoViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val categorySelectionStore: CategorySelectionStore,
     private val timelineEventRepository: TimelineEventRepository,
+    private val reminderCoordinator: ReminderCoordinator,
 ) : ViewModel() {
 
     val categories: StateFlow<List<Category>> = categoryRepository
@@ -216,6 +218,7 @@ class TodoViewModel @Inject constructor(
                     updatedAt = now,
                 )
                 todoRepository.update(updatedTodo)
+                reminderCoordinator.syncTodo(updatedTodo)
                 logTodoEvent(updatedTodo, TimelineActionType.UPDATE, now)
             }
             _refreshVersion.value += 1
@@ -241,6 +244,7 @@ class TodoViewModel @Inject constructor(
                         updatedAt = now,
                     )
                     todoRepository.update(updatedTodo)
+                    reminderCoordinator.syncTodo(updatedTodo)
                     logTodoEvent(updatedTodo, TimelineActionType.REMINDER, now, reminderTime)
                 }
             }
@@ -259,6 +263,7 @@ class TodoViewModel @Inject constructor(
             }
             selectedItems.forEach { todo ->
                 logTodoEvent(todo, TimelineActionType.DELETE)
+                reminderCoordinator.removeTodo(todo)
             }
             todoRepository.deleteByIds(selectedIds)
             _refreshVersion.value += 1
@@ -305,6 +310,7 @@ class TodoViewModel @Inject constructor(
             )
             val todoId = todoRepository.insert(newTodo)
             val savedTodo = newTodo.copy(id = todoId)
+            reminderCoordinator.syncTodo(savedTodo)
             logTodoEvent(savedTodo, TimelineActionType.CREATE, now)
             if (reminderTime != null) {
                 logTodoEvent(savedTodo, TimelineActionType.REMINDER, now, reminderTime)
@@ -322,12 +328,17 @@ class TodoViewModel @Inject constructor(
                 updatedAt = now,
             )
             todoRepository.update(updatedTodo)
+            reminderCoordinator.syncTodo(updatedTodo)
             logTodoEvent(
                 updatedTodo,
                 actionType = if (newStatus == TodoStatus.COMPLETED) TimelineActionType.COMPLETE else TimelineActionType.UPDATE,
                 occurredAt = now,
             )
         }
+    }
+
+    suspend fun getTodoById(id: Long): Todo? {
+        return todoRepository.getTodoById(id).first()
     }
 
     fun updateTodo(
@@ -355,6 +366,7 @@ class TodoViewModel @Inject constructor(
                 updatedAt = now,
             )
             todoRepository.update(updatedTodo)
+            reminderCoordinator.syncTodo(updatedTodo)
             if (hasContentChanged) {
                 logTodoEvent(updatedTodo, TimelineActionType.UPDATE, now)
             }
@@ -367,6 +379,7 @@ class TodoViewModel @Inject constructor(
     fun deleteTodo(todo: Todo) {
         viewModelScope.launch {
             logTodoEvent(todo, TimelineActionType.DELETE)
+            reminderCoordinator.removeTodo(todo)
             todoRepository.delete(todo)
         }
     }
