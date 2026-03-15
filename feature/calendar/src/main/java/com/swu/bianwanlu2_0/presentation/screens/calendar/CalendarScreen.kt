@@ -78,7 +78,6 @@ import java.util.Date
 import java.util.Locale
 
 private const val CALENDAR_MONTH_SWIPE_THRESHOLD = 84f
-private const val CALENDAR_DAY_REMINDER_PREVIEW_LIMIT = 2
 
 private fun calendarFadeContentTransform(
     enterDurationMillis: Int = 180,
@@ -274,9 +273,9 @@ fun CalendarScreen(
                                             selectedDayKey = day.key
                                             dayDialogKey = day.key
                                         },
-                                        onReminderClick = { reminder ->
+                                        onReminderClick = {
                                             selectedDayKey = day.key
-                                            selectedReminder = reminder
+                                            dayDialogKey = day.key
                                         },
                                     )
                                 }
@@ -387,7 +386,6 @@ private fun CalendarSelectedDayCard(
         day.badgeLabel != null -> "当天暂无提醒 · ${day.badgeLabel}"
         else -> "当天暂无提醒，点击查看详情"
     }
-    val firstReminder = day.reminders.firstOrNull()
 
     Surface(
         modifier = Modifier
@@ -441,15 +439,6 @@ private fun CalendarSelectedDayCard(
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            firstReminder?.let {
-                Text(
-                    text = "最近提醒：${formatReminderClock(it.reminderTime)} · ${it.title}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 }
@@ -485,7 +474,7 @@ private fun CalendarDayCell(
     isSelected: Boolean,
     modifier: Modifier = Modifier,
     onDayClick: () -> Unit,
-    onReminderClick: (CalendarReminderItemUi) -> Unit,
+    onReminderClick: () -> Unit,
 ) {
     val borderColor = when {
         isSelected -> MaterialTheme.colorScheme.primary
@@ -536,7 +525,19 @@ private fun CalendarDayCell(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
-            day.badgeLabel?.let { label ->
+            if (day.totalReminderCount > 0) {
+                CalendarReminderDots(
+                    reminderCount = day.totalReminderCount,
+                    onClick = onReminderClick,
+                )
+            }
+        }
+        day.badgeLabel?.let { label ->
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
                 CalendarDayBadge(
                     label = label,
                     type = day.badgeType,
@@ -545,30 +546,7 @@ private fun CalendarDayCell(
         }
 
         Spacer(modifier = Modifier.height(6.dp))
-
-        if (day.reminders.isEmpty()) {
-            Spacer(modifier = Modifier.weight(1f))
-        } else {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                day.reminders.take(CALENDAR_DAY_REMINDER_PREVIEW_LIMIT).forEach { reminder ->
-                    CalendarReminderChip(
-                        item = reminder,
-                        onClick = { onReminderClick(reminder) },
-                    )
-                }
-                if (day.hiddenReminderCount > 0) {
-                    Text(
-                        text = "\u8fd8\u6709${day.hiddenReminderCount}\u9879",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 2.dp),
-                    )
-                }
-            }
-        }
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
 
@@ -593,15 +571,42 @@ private fun CalendarDayBadge(
     Box(
         modifier = Modifier
             .background(backgroundColor, RoundedCornerShape(10.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             fontSize = 10.sp,
             color = contentColor,
-            maxLines = 1,
+            lineHeight = 12.sp,
         )
+    }
+}
+
+@Composable
+private fun CalendarReminderDots(
+    reminderCount: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = modifier.clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .background(MaterialTheme.colorScheme.error, CircleShape),
+        )
+        if (reminderCount > 1) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = reminderCount.toString(),
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
