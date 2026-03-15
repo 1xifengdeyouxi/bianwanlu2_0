@@ -1,4 +1,4 @@
-package com.swu.bianwanlu2_0.presentation.screens.notes
+﻿package com.swu.bianwanlu2_0.presentation.screens.notes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -63,9 +63,11 @@ class NoteViewModel @Inject constructor(
     private val _selectedNoteIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedNoteIds: StateFlow<Set<Long>> = _selectedNoteIds.asStateFlow()
 
-    val isSelectionMode: StateFlow<Boolean> = _selectedNoteIds
-        .map { it.isNotEmpty() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    private val _selectionModeOverride = MutableStateFlow(false)
+
+    val isSelectionMode: StateFlow<Boolean> = combine(_selectedNoteIds, _selectionModeOverride) { selectedIds, selectionOverride ->
+        selectionOverride || selectedIds.isNotEmpty()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val notesByCategory: Flow<List<Note>> = _selectedCategory
         .flatMapLatest { category ->
@@ -162,11 +164,17 @@ class NoteViewModel @Inject constructor(
         _currentFilter.value = filter
     }
 
+    fun startSelectionMode() {
+        _selectionModeOverride.value = true
+    }
+
     fun enterSelection(noteId: Long) {
+        _selectionModeOverride.value = true
         _selectedNoteIds.value = _selectedNoteIds.value + noteId
     }
 
     fun toggleSelection(noteId: Long) {
+        _selectionModeOverride.value = true
         val current = _selectedNoteIds.value.toMutableSet()
         if (!current.add(noteId)) {
             current.remove(noteId)
@@ -175,10 +183,12 @@ class NoteViewModel @Inject constructor(
     }
 
     fun clearSelection() {
+        _selectionModeOverride.value = false
         _selectedNoteIds.value = emptySet()
     }
 
     fun selectAllFilteredNotes() {
+        _selectionModeOverride.value = true
         _selectedNoteIds.value = filteredNotes.value.mapTo(mutableSetOf()) { it.id }
     }
 
@@ -466,3 +476,5 @@ class NoteViewModel @Inject constructor(
         return cal.timeInMillis
     }
 }
+
+

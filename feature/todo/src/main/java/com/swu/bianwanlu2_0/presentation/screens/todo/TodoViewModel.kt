@@ -64,9 +64,11 @@ class TodoViewModel @Inject constructor(
     private val _selectedTodoIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedTodoIds: StateFlow<Set<Long>> = _selectedTodoIds.asStateFlow()
 
-    val isSelectionMode: StateFlow<Boolean> = _selectedTodoIds
-        .map { it.isNotEmpty() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    private val _selectionModeOverride = MutableStateFlow(false)
+
+    val isSelectionMode: StateFlow<Boolean> = combine(_selectedTodoIds, _selectionModeOverride) { selectedIds, selectionOverride ->
+        selectionOverride || selectedIds.isNotEmpty()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     val todos: StateFlow<List<Todo>> = combine(_selectedCategory, _refreshVersion) { category, _ -> category }
         .flatMapLatest { category ->
@@ -162,11 +164,17 @@ class TodoViewModel @Inject constructor(
         _currentFilter.value = filter
     }
 
+    fun startSelectionMode() {
+        _selectionModeOverride.value = true
+    }
+
     fun enterSelection(todoId: Long) {
+        _selectionModeOverride.value = true
         _selectedTodoIds.value = _selectedTodoIds.value + todoId
     }
 
     fun toggleSelection(todoId: Long) {
+        _selectionModeOverride.value = true
         val current = _selectedTodoIds.value.toMutableSet()
         if (!current.add(todoId)) {
             current.remove(todoId)
@@ -175,10 +183,12 @@ class TodoViewModel @Inject constructor(
     }
 
     fun clearSelection() {
+        _selectionModeOverride.value = false
         _selectedTodoIds.value = emptySet()
     }
 
     fun selectAllFilteredTodos() {
+        _selectionModeOverride.value = true
         _selectedTodoIds.value = filteredTodos.value.mapTo(mutableSetOf()) { it.id }
     }
 
@@ -447,3 +457,4 @@ class TodoViewModel @Inject constructor(
         return start to end
     }
 }
+

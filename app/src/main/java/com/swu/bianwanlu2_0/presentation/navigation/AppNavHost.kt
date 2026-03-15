@@ -1,12 +1,14 @@
 ﻿package com.swu.bianwanlu2_0.presentation.navigation
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -33,8 +35,11 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -68,6 +74,7 @@ import com.swu.bianwanlu2_0.presentation.components.AppDrawerContent
 import com.swu.bianwanlu2_0.presentation.components.CategoryDropdown
 import com.swu.bianwanlu2_0.presentation.components.ReminderDialog
 import com.swu.bianwanlu2_0.presentation.screens.calendar.CalendarScreen
+import com.swu.bianwanlu2_0.presentation.screens.calendar.CalendarViewModel
 import com.swu.bianwanlu2_0.presentation.screens.category.CategoryManageScreen
 import com.swu.bianwanlu2_0.presentation.screens.category.CategoryViewModel
 import com.swu.bianwanlu2_0.presentation.screens.notes.AddNoteScreen
@@ -85,6 +92,7 @@ import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileActionDialog
 import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileAvatarImage
 import com.swu.bianwanlu2_0.presentation.screens.profile.ProfileInfoScreen
 import com.swu.bianwanlu2_0.presentation.screens.profile.ReminderSettingsScreen
+import com.swu.bianwanlu2_0.presentation.screens.search.SearchScreen
 import com.swu.bianwanlu2_0.presentation.screens.timeline.MainTimelineScreen
 import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.data.local.entity.Todo
@@ -112,9 +120,17 @@ private enum class NavigationMotionDirection {
     Backward,
 }
 
+private enum class MainOverflowAction {
+    Select,
+    Import,
+    Export,
+    GeneralSettings,
+}
+
 private sealed interface HostScreen {
     data object Main : HostScreen
     data object AuthEntry : HostScreen
+    data object Search : HostScreen
     data class My(val destination: MyPageDestination) : HostScreen
     data object AddNote : HostScreen
     data class EditNote(val note: Note) : HostScreen
@@ -164,6 +180,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     val todoViewModel: TodoViewModel = hiltViewModel()
     val categoryViewModel: CategoryViewModel = hiltViewModel()
     val accountViewModel: AccountViewModel = hiltViewModel()
+    val calendarViewModel: CalendarViewModel = hiltViewModel()
 
     val noteCount by noteViewModel.noteCount.collectAsStateWithLifecycle()
     val todoCount by todoViewModel.todoCount.collectAsStateWithLifecycle()
@@ -181,14 +198,22 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     val selectedNotes by noteViewModel.selectedNotes.collectAsStateWithLifecycle()
     val filteredNotes by noteViewModel.filteredNotes.collectAsStateWithLifecycle()
     val accountState by accountViewModel.uiState.collectAsStateWithLifecycle()
+    val calendarUiState by calendarViewModel.uiState.collectAsStateWithLifecycle()
+    val calendarToolbarTitle by calendarViewModel.toolbarTitle.collectAsStateWithLifecycle()
+    val calendarMonthPickerVisible by calendarViewModel.isMonthPickerVisible.collectAsStateWithLifecycle()
+    val calendarRefreshing by calendarViewModel.isRefreshing.collectAsStateWithLifecycle()
     val todoSelectionMode by todoViewModel.isSelectionMode.collectAsStateWithLifecycle()
     val selectedTodoIds by todoViewModel.selectedTodoIds.collectAsStateWithLifecycle()
     val selectedTodos by todoViewModel.selectedTodos.collectAsStateWithLifecycle()
     val filteredTodos by todoViewModel.filteredTodos.collectAsStateWithLifecycle()
 
+    val hasCategoryDropdown =
+        currentDestination == AppDestination.Notes || currentDestination == AppDestination.Todo
+    val hasCalendarMonthPicker = currentDestination == AppDestination.Calendar
     val title = when (currentDestination) {
         AppDestination.Notes -> noteCategoryName
         AppDestination.Todo -> todoCategoryName
+        AppDestination.Calendar -> calendarToolbarTitle
         else -> currentDestination.label
     }
     val itemCount = when (currentDestination) {
@@ -196,8 +221,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         AppDestination.Todo -> todoCount
         else -> -1
     }
-    val hasCategoryDropdown =
-        currentDestination == AppDestination.Notes || currentDestination == AppDestination.Todo
+    val showToolbarArrow = hasCategoryDropdown || hasCalendarMonthPicker
     val categories: List<Category> = when (currentDestination) {
         AppDestination.Notes -> noteCategories
         AppDestination.Todo -> todoCategories
@@ -216,6 +240,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     val myPageDestination = myPageStack.lastOrNull() ?: MyPageDestination.Root
     var showContactDialog by remember { mutableStateOf(false) }
     var showCategoryManage by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
     var showAddNote by remember { mutableStateOf(false) }
     var editingNote by remember { mutableStateOf<Note?>(null) }
     var showAddTodo by remember { mutableStateOf(false) }
@@ -224,6 +249,13 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     var showDeleteNotesConfirm by remember { mutableStateOf(false) }
     var showBatchTodoReminderDialog by remember { mutableStateOf(false) }
     var showDeleteTodosConfirm by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var pendingFeatureTitle by remember { mutableStateOf<String?>(null) }
+    val isToolbarArrowExpanded = when {
+        hasCategoryDropdown -> showCategoryDropdown
+        hasCalendarMonthPicker -> calendarMonthPickerVisible
+        else -> false
+    }
     var hostMotionDirection by remember { mutableStateOf(NavigationMotionDirection.Forward) }
     var mainMotionDirection by remember { mutableStateOf(NavigationMotionDirection.Forward) }
 
@@ -240,6 +272,8 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     fun openMyPage(destination: MyPageDestination = MyPageDestination.Root) {
         hostMotionDirection = NavigationMotionDirection.Forward
         showContactDialog = false
+        showOverflowMenu = false
+        calendarViewModel.dismissMonthPicker()
         showMyPage = true
         resetMyPageStack()
         if (destination != MyPageDestination.Root) {
@@ -247,16 +281,30 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         }
     }
 
+    fun openStandaloneMyPage(destination: MyPageDestination) {
+        hostMotionDirection = NavigationMotionDirection.Forward
+        showContactDialog = false
+        showOverflowMenu = false
+        calendarViewModel.dismissMonthPicker()
+        showMyPage = true
+        myPageStack.clear()
+        myPageStack.add(destination)
+    }
+
     fun pushMyPage(destination: MyPageDestination) {
         if (myPageDestination == destination) return
         hostMotionDirection = NavigationMotionDirection.Forward
         showContactDialog = false
+        showOverflowMenu = false
+        calendarViewModel.dismissMonthPicker()
         myPageStack.add(destination)
     }
 
     fun popMyPageOrClose() {
         hostMotionDirection = NavigationMotionDirection.Backward
         showContactDialog = false
+        showOverflowMenu = false
+        calendarViewModel.dismissMonthPicker()
         if (myPageStack.size > 1) {
             myPageStack.removeAt(myPageStack.lastIndex)
         } else {
@@ -279,6 +327,8 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             NavigationMotionDirection.Backward
         }
         showCategoryDropdown = false
+        showOverflowMenu = false
+        calendarViewModel.dismissMonthPicker()
         currentDestination = destination
         mainDestinationStack.add(destination)
     }
@@ -287,12 +337,15 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         if (mainDestinationStack.size <= 1) return
         mainMotionDirection = NavigationMotionDirection.Backward
         showCategoryDropdown = false
+        showOverflowMenu = false
+        calendarViewModel.dismissMonthPicker()
         mainDestinationStack.removeAt(mainDestinationStack.lastIndex)
         currentDestination = mainDestinationStack.last()
     }
 
     val hostScreen = when {
         !accountState.hasSeenAuthChoice -> HostScreen.AuthEntry
+        showSearch -> HostScreen.Search
         showMyPage -> HostScreen.My(myPageDestination)
         showAddNote -> HostScreen.AddNote
         editingNote != null -> HostScreen.EditNote(editingNote!!)
@@ -305,7 +358,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     BackHandler(
         enabled =
             showContactDialog ||
+                showOverflowMenu ||
+                calendarMonthPickerVisible ||
                 showMyPage ||
+                showSearch ||
                 showAddNote ||
                 editingNote != null ||
                 showAddTodo ||
@@ -319,6 +375,12 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     ) {
         when {
             showContactDialog -> showContactDialog = false
+            showOverflowMenu -> showOverflowMenu = false
+            calendarMonthPickerVisible -> calendarViewModel.dismissMonthPicker()
+            showSearch -> {
+                hostMotionDirection = NavigationMotionDirection.Backward
+                showSearch = false
+            }
             showMyPage -> popMyPageOrClose()
             showAddNote -> {
                 hostMotionDirection = NavigationMotionDirection.Backward
@@ -516,15 +578,61 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                         MainTopBar(
                             title = title,
                             itemCount = itemCount,
-                            showArrow = hasCategoryDropdown,
-                            isDropdownOpen = showCategoryDropdown,
+                            showArrow = showToolbarArrow,
+                            isDropdownOpen = isToolbarArrowExpanded,
                             avatarUri = accountState.avatarUri,
+                            showMenuIcon = currentDestination == AppDestination.Notes || currentDestination == AppDestination.Todo,
+                            isMenuExpanded = showOverflowMenu,
                             onTitleClick = {
-                                if (hasCategoryDropdown) showCategoryDropdown = !showCategoryDropdown
+                                showOverflowMenu = false
+                                when {
+                                    hasCategoryDropdown -> showCategoryDropdown = !showCategoryDropdown
+                                    hasCalendarMonthPicker -> if (calendarMonthPickerVisible) calendarViewModel.dismissMonthPicker() else calendarViewModel.showMonthPicker()
+                                }
                             },
-                            onAvatarClick = { scope.launch { drawerState.open() } },
-                            onSearchClick = {},
-                            onMenuClick = {},
+                            onAvatarClick = {
+                                showOverflowMenu = false
+                                showCategoryDropdown = false
+                                calendarViewModel.dismissMonthPicker()
+                                scope.launch { drawerState.open() }
+                            },
+                            onSearchClick = {
+                                hostMotionDirection = NavigationMotionDirection.Forward
+                                showOverflowMenu = false
+                                showCategoryDropdown = false
+                                calendarViewModel.dismissMonthPicker()
+                                showSearch = true
+                            },
+                            onMenuToggle = {
+                                showCategoryDropdown = false
+                                calendarViewModel.dismissMonthPicker()
+                                showOverflowMenu = !showOverflowMenu
+                            },
+                            onMenuDismiss = { showOverflowMenu = false },
+                            onMenuAction = { action ->
+                                showOverflowMenu = false
+                                when (action) {
+                                    MainOverflowAction.Select -> {
+                                        when (currentDestination) {
+                                            AppDestination.Notes -> noteViewModel.startSelectionMode()
+                                            AppDestination.Todo -> todoViewModel.startSelectionMode()
+                                            else -> Unit
+                                        }
+                                    }
+
+                                    MainOverflowAction.Import -> {
+                                        pendingFeatureTitle = "数据导入"
+                                    }
+
+                                    MainOverflowAction.Export -> {
+                                        pendingFeatureTitle = "数据导出"
+                                    }
+
+                                    MainOverflowAction.GeneralSettings -> {
+                                        openStandaloneMyPage(MyPageDestination.GeneralSettings)
+                                    }
+                                }
+                            },
                         )
                     }
                 },
@@ -601,20 +709,53 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                             )
 
                             AppDestination.Timeline -> MainTimelineScreen()
-                            AppDestination.Calendar -> CalendarScreen()
+                            AppDestination.Calendar -> CalendarScreen(
+                                uiState = calendarUiState,
+                                isRefreshing = calendarRefreshing,
+                                isMonthPickerVisible = calendarMonthPickerVisible,
+                                onPreviousMonth = calendarViewModel::goToPreviousMonth,
+                                onNextMonth = calendarViewModel::goToNextMonth,
+                                onDismissMonthPicker = calendarViewModel::dismissMonthPicker,
+                                onSelectMonth = calendarViewModel::selectMonth,
+                                onJumpToToday = calendarViewModel::jumpToToday,
+                                onRefresh = calendarViewModel::refresh,
+                                onOpenReminder = { reminder ->
+                                    calendarViewModel.dismissMonthPicker()
+                                    when (reminder.type) {
+                                        com.swu.bianwanlu2_0.presentation.screens.calendar.CalendarReminderItemType.NOTE -> {
+                                            reminder.note?.let {
+                                                hostMotionDirection = NavigationMotionDirection.Forward
+                                                editingNote = it
+                                            }
+                                        }
+
+                                        com.swu.bianwanlu2_0.presentation.screens.calendar.CalendarReminderItemType.TODO -> {
+                                            reminder.todo?.let {
+                                                hostMotionDirection = NavigationMotionDirection.Forward
+                                                editingTodo = it
+                                            }
+                                        }
+                                    }
+                                },
+                            )
                         }
                     }
 
-                    if (hasCategoryDropdown && showCategoryDropdown && !(currentDestination == AppDestination.Todo && todoSelectionMode)) {
+                    AnimatedVisibility(
+                        visible = hasCategoryDropdown && showCategoryDropdown && !(currentDestination == AppDestination.Todo && todoSelectionMode),
+                        enter = fadeIn(animationSpec = tween(durationMillis = 180)),
+                        exit = fadeOut(animationSpec = tween(durationMillis = 140)),
+                        modifier = Modifier.zIndex(5f),
+                    ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.04f))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
                                     onClick = { showCategoryDropdown = false },
-                                )
-                                .zIndex(5f),
+                                ),
                         )
                     }
 
@@ -662,6 +803,26 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                     onLogin = { account, password -> accountViewModel.login(account, password) },
                     onRegister = { account, password -> accountViewModel.register(account, password) },
                     onAuthSuccess = {},
+                )
+            }
+
+            HostScreen.Search -> {
+                SearchScreen(
+                    onBack = {
+                        hostMotionDirection = NavigationMotionDirection.Backward
+                        showSearch = false
+                    },
+                    onOpenNote = { note ->
+                        hostMotionDirection = NavigationMotionDirection.Forward
+                        showSearch = false
+                        editingNote = note
+                    },
+                    onOpenTodo = { todo ->
+                        hostMotionDirection = NavigationMotionDirection.Forward
+                        showSearch = false
+                        editingTodo = todo
+                    },
+                    onToggleTodoComplete = todoViewModel::toggleComplete,
                 )
             }
 
@@ -832,6 +993,19 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         )
     }
 
+    if (pendingFeatureTitle != null) {
+        AlertDialog(
+            onDismissRequest = { pendingFeatureTitle = null },
+            title = { Text(pendingFeatureTitle!!) },
+            text = { Text("该功能暂未开放，后续版本会继续完善。", color = Color(0xFF616161)) },
+            confirmButton = {
+                TextButton(onClick = { pendingFeatureTitle = null }) {
+                    Text("我知道了", color = Color(0xFF212121))
+                }
+            },
+        )
+    }
+
     if (showAddCategoryDialog) {
         val dialogDefaultType = when (currentDestination) {
             AppDestination.Notes -> CategoryType.NOTE
@@ -856,10 +1030,14 @@ private fun MainTopBar(
     showArrow: Boolean,
     isDropdownOpen: Boolean,
     avatarUri: String?,
+    showMenuIcon: Boolean,
+    isMenuExpanded: Boolean,
     onTitleClick: () -> Unit,
     onAvatarClick: () -> Unit,
     onSearchClick: () -> Unit,
-    onMenuClick: () -> Unit,
+    onMenuToggle: () -> Unit,
+    onMenuDismiss: () -> Unit,
+    onMenuAction: (MainOverflowAction) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val iconTint = LocalAppIconTint.current
@@ -899,11 +1077,18 @@ private fun MainTopBar(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     if (showArrow) {
+                        val arrowRotation by animateFloatAsState(
+                            targetValue = if (isDropdownOpen) 180f else 0f,
+                            animationSpec = tween(durationMillis = 220),
+                            label = "toolbar_category_arrow",
+                        )
                         Icon(
-                            imageVector = if (isDropdownOpen) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                            imageVector = Icons.Default.ArrowDropDown,
                             contentDescription = "展开分类",
                             tint = iconTint,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier
+                                .size(20.dp)
+                                .graphicsLayer { rotationZ = arrowRotation }
                         )
                     }
                 }
@@ -918,12 +1103,42 @@ private fun MainTopBar(
             }
         }
 
-        Row(modifier = Modifier.align(Alignment.CenterEnd)) {
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             IconButton(onClick = onSearchClick) {
                 Icon(Icons.Outlined.Search, "搜索", tint = iconTint)
             }
-            IconButton(onClick = onMenuClick) {
-                Icon(Icons.Outlined.MoreVert, "更多", tint = iconTint)
+            if (showMenuIcon) {
+                Box {
+                    IconButton(onClick = onMenuToggle) {
+                        Icon(Icons.Outlined.MoreVert, "更多", tint = iconTint)
+                    }
+                    DropdownMenu(
+                        expanded = isMenuExpanded,
+                        onDismissRequest = onMenuDismiss,
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("选择") },
+                            onClick = { onMenuAction(MainOverflowAction.Select) },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("数据导入") },
+                            onClick = { onMenuAction(MainOverflowAction.Import) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("数据导出") },
+                            onClick = { onMenuAction(MainOverflowAction.Export) },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("通用设置") },
+                            onClick = { onMenuAction(MainOverflowAction.GeneralSettings) },
+                        )
+                    }
+                }
             }
         }
     }
@@ -1059,11 +1274,24 @@ private fun MainTopBarPreview() {
             title = "笔记", itemCount = 3,
             showArrow = true, isDropdownOpen = false,
             avatarUri = null,
+            showMenuIcon = true,
+            isMenuExpanded = false,
             onTitleClick = {}, onAvatarClick = {},
-            onSearchClick = {}, onMenuClick = {}
+            onSearchClick = {},
+            onMenuToggle = {},
+            onMenuDismiss = {},
+            onMenuAction = {},
         )
     }
 }
+
+
+
+
+
+
+
+
 
 
 

@@ -1,12 +1,16 @@
-package com.swu.bianwanlu2_0.presentation.components
+﻿package com.swu.bianwanlu2_0.presentation.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,16 +53,32 @@ fun CategoryDropdown(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = expandVertically(expandFrom = Alignment.Top),
-        exit = shrinkVertically(shrinkTowards = Alignment.Top),
-        modifier = modifier
+        enter = fadeIn(animationSpec = tween(durationMillis = 220)) +
+            expandVertically(
+                animationSpec = tween(durationMillis = 260),
+                expandFrom = Alignment.Top,
+            ) +
+            slideInVertically(
+                animationSpec = tween(durationMillis = 260),
+                initialOffsetY = { -it / 4 },
+            ),
+        exit = fadeOut(animationSpec = tween(durationMillis = 180)) +
+            shrinkVertically(
+                animationSpec = tween(durationMillis = 220),
+                shrinkTowards = Alignment.Top,
+            ) +
+            slideOutVertically(
+                animationSpec = tween(durationMillis = 220),
+                targetOffsetY = { -it / 5 },
+            ),
+        modifier = modifier,
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .shadow(4.dp, RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)),
             shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
-            color = Color.White
+            color = Color.White,
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                 categories.forEach { category ->
@@ -68,13 +88,13 @@ fun CategoryDropdown(
                         onClick = {
                             onSelect(category)
                             onDismiss()
-                        }
+                        },
                     )
                 }
 
                 HorizontalDivider(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    color = Color(0xFFEEEEEE)
+                    color = Color(0xFFEEEEEE),
                 )
 
                 Row(
@@ -82,7 +102,7 @@ fun CategoryDropdown(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -92,14 +112,14 @@ fun CategoryDropdown(
                             onClick = {
                                 onDismiss()
                                 onAddCategory()
-                            }
-                        )
+                            },
+                        ),
                     ) {
                         Icon(
                             Icons.Outlined.Add,
                             contentDescription = "新增分类",
                             modifier = Modifier.size(18.dp),
-                            tint = Color(0xFF757575)
+                            tint = Color(0xFF757575),
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("新增分类", fontSize = 14.sp, color = Color(0xFF757575))
@@ -113,8 +133,8 @@ fun CategoryDropdown(
                             onClick = {
                                 onDismiss()
                                 onManageCategory()
-                            }
-                        )
+                            },
+                        ),
                     ) {
                         Text("分类管理", fontSize = 14.sp, color = Color(0xFF757575))
                         Spacer(modifier = Modifier.width(2.dp))
@@ -122,23 +142,12 @@ fun CategoryDropdown(
                             Icons.Outlined.ChevronRight,
                             contentDescription = "分类管理",
                             modifier = Modifier.size(18.dp),
-                            tint = Color(0xFF757575)
+                            tint = Color(0xFF757575),
                         )
                     }
                 }
             }
         }
-    }
-
-    if (visible) {
-        Box(
-            modifier = Modifier
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss
-                )
-        )
     }
 }
 

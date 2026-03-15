@@ -6,7 +6,11 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,13 +30,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.Person
@@ -51,8 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -85,16 +86,18 @@ fun AppDrawerContent(
             .width(300.dp)
             .background(MaterialTheme.colorScheme.surface)
     ) {
-        // 顶部用户区域
-        DrawerHeader(displayName = userDisplayName, secondaryText = userSecondaryText, avatarUri = avatarUri, onClick = onMyClick)
+        DrawerHeader(
+            displayName = userDisplayName,
+            secondaryText = userSecondaryText,
+            avatarUri = avatarUri,
+            onClick = onMyClick,
+        )
 
-        // 分类列表
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            // ===== 笔记分类 =====
             item(key = "note_section") {
                 CategorySectionHeader(
                     title = "我的笔记分类",
@@ -102,28 +105,41 @@ fun AppDrawerContent(
                     onClick = { noteExpanded = !noteExpanded }
                 )
             }
-            if (noteExpanded) {
-                items(noteCategories, key = { "n_${it.id}" }) { category ->
-                    DrawerCategoryItem(
-                        category = category,
-                        icon = Icons.Outlined.BookmarkBorder,
-                        isSelected = selectedCategory?.id == category.id,
-                        onClick = { onCategorySelect(category) }
-                    )
-                }
-                if (noteCategories.isEmpty()) {
-                    item {
-                        Text(
-                            text = "暂无笔记分类",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 52.dp, top = 8.dp, bottom = 12.dp)
-                        )
+            item(key = "note_content") {
+                AnimatedVisibility(
+                    visible = noteExpanded,
+                    enter = fadeIn(animationSpec = tween(durationMillis = 180)) +
+                        expandVertically(
+                            animationSpec = tween(durationMillis = 240),
+                            expandFrom = Alignment.Top,
+                        ),
+                    exit = fadeOut(animationSpec = tween(durationMillis = 160)) +
+                        shrinkVertically(
+                            animationSpec = tween(durationMillis = 220),
+                            shrinkTowards = Alignment.Top,
+                        ),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        noteCategories.forEach { category ->
+                            DrawerCategoryItem(
+                                category = category,
+                                icon = Icons.Outlined.BookmarkBorder,
+                                isSelected = selectedCategory?.id == category.id,
+                                onClick = { onCategorySelect(category) }
+                            )
+                        }
+                        if (noteCategories.isEmpty()) {
+                            Text(
+                                text = "暂无笔记分类",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 52.dp, top = 8.dp, bottom = 12.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            // ===== 待办分类 =====
             item(key = "todo_section") {
                 CategorySectionHeader(
                     title = "我的待办分类",
@@ -131,23 +147,37 @@ fun AppDrawerContent(
                     onClick = { todoExpanded = !todoExpanded }
                 )
             }
-            if (todoExpanded) {
-                items(todoCategories, key = { "t_${it.id}" }) { category ->
-                    DrawerCategoryItem(
-                        category = category,
-                        icon = Icons.Outlined.CheckBox,
-                        isSelected = selectedCategory?.id == category.id,
-                        onClick = { onCategorySelect(category) }
-                    )
-                }
-                if (todoCategories.isEmpty()) {
-                    item {
-                        Text(
-                            text = "暂无待办分类",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 52.dp, top = 8.dp, bottom = 12.dp)
-                        )
+            item(key = "todo_content") {
+                AnimatedVisibility(
+                    visible = todoExpanded,
+                    enter = fadeIn(animationSpec = tween(durationMillis = 180)) +
+                        expandVertically(
+                            animationSpec = tween(durationMillis = 240),
+                            expandFrom = Alignment.Top,
+                        ),
+                    exit = fadeOut(animationSpec = tween(durationMillis = 160)) +
+                        shrinkVertically(
+                            animationSpec = tween(durationMillis = 220),
+                            shrinkTowards = Alignment.Top,
+                        ),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        todoCategories.forEach { category ->
+                            DrawerCategoryItem(
+                                category = category,
+                                icon = Icons.Outlined.CheckBox,
+                                isSelected = selectedCategory?.id == category.id,
+                                onClick = { onCategorySelect(category) }
+                            )
+                        }
+                        if (todoCategories.isEmpty()) {
+                            Text(
+                                text = "暂无待办分类",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 52.dp, top = 8.dp, bottom = 12.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -155,7 +185,6 @@ fun AppDrawerContent(
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-        // 底部按钮行：我的 | 同步 | 小游戏
         DrawerBottomBar(
             onMyClick = onMyClick,
             onSyncClick = onSyncClick,
@@ -211,7 +240,6 @@ private fun DrawerHeader(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // 头像
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -268,14 +296,14 @@ private fun DrawerAvatarImage(
         if (imageBitmap != null) {
             Image(
                 bitmap = imageBitmap,
-                contentDescription = "??",
+                contentDescription = "头像",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
         } else {
             Icon(
                 Icons.Outlined.Person,
-                contentDescription = "??",
+                contentDescription = "头像",
                 tint = iconTint.copy(alpha = 0.7f),
                 modifier = Modifier.size(36.dp)
             )
@@ -290,6 +318,11 @@ private fun CategorySectionHeader(
     onClick: () -> Unit
 ) {
     val iconTint = LocalAppIconTint.current
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "drawer_section_arrow",
+    )
 
     Row(
         modifier = Modifier
@@ -310,10 +343,12 @@ private fun CategorySectionHeader(
             modifier = Modifier.weight(1f)
         )
         Icon(
-            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            imageVector = Icons.Default.KeyboardArrowDown,
             contentDescription = if (expanded) "收起" else "展开",
             tint = iconTint.copy(alpha = 0.8f),
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier
+                .size(20.dp)
+                .graphicsLayer { rotationZ = arrowRotation }
         )
     }
 }
@@ -424,4 +459,3 @@ private fun DrawerBottomItem(
         Text(text = label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
-
