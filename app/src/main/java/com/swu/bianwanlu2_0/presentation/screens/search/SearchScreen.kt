@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -102,7 +101,7 @@ fun SearchScreen(
             OutlinedTextField(
                 value = query,
                 onValueChange = viewModel::updateQuery,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 placeholder = { Text("搜索笔记和待办") },
@@ -127,18 +126,6 @@ fun SearchScreen(
                     },
                 ),
             )
-            Spacer(modifier = Modifier.size(12.dp))
-            Button(
-                onClick = {
-                    focusManager.clearFocus()
-                    viewModel.submitSearch()
-                },
-                enabled = query.isNotBlank(),
-                modifier = Modifier.height(56.dp),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Text("搜索", fontSize = 17.sp)
-            }
         }
 
         Row(
@@ -267,7 +254,7 @@ private fun SearchHistorySection(
     if (history.isEmpty()) {
         SearchEmptyState(
             title = "暂无搜索历史",
-            subtitle = "输入关键词时会实时显示匹配结果，点击搜索按钮后会记录到这里。",
+            subtitle = "\u8f93\u5165\u5173\u952e\u8bcd\u65f6\u4f1a\u5b9e\u65f6\u663e\u793a\u5339\u914d\u7ed3\u679c\uff0c\u5e38\u7528\u5173\u952e\u8bcd\u4f1a\u81ea\u52a8\u8bb0\u5f55\u5230\u8fd9\u91cc\u3002",
         )
         return
     }
@@ -279,7 +266,6 @@ private fun SearchHistorySection(
                     .fillMaxWidth()
                     .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
                     text = "历史记录",

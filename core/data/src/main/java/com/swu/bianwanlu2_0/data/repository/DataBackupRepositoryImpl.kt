@@ -69,7 +69,7 @@ class DataBackupRepositoryImpl @Inject constructor(
             val rawText = inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
                 reader.readText()
             }
-            require(rawText.isNotBlank()) { "??????" }
+            require(rawText.isNotBlank()) { "备份文件内容为空" }
 
             val payload = parsePayload(JSONObject(rawText))
             BackupImportPreview(
@@ -284,19 +284,19 @@ class DataBackupRepositoryImpl @Inject constructor(
     private fun buildWarnings(payload: BackupPayload): List<String> {
         val warnings = mutableListOf<String>()
         if (payload.schemaVersion > BACKUP_SCHEMA_VERSION) {
-            warnings += "???????????????????????"
+            warnings += "该备份来自较新版本，部分数据可能无法完全兼容。"
         }
         if (payload.notes.any { it.imageUris.isNotBlank() }) {
-            warnings += "???????????????????????????"
+            warnings += "备份中包含图片引用，跨设备恢复时部分图片可能需要重新添加。"
         }
         if (payload.categories.none { it.type == CategoryType.NOTE }) {
-            warnings += "??????????????????????????"
+            warnings += "备份中未找到笔记分类，导入时会自动补齐默认笔记分类。"
         }
         if (payload.categories.none { it.type == CategoryType.TODO }) {
-            warnings += "??????????????????????????"
+            warnings += "备份中未找到待办分类，导入时会自动补齐默认待办分类。"
         }
         if (payload.notes.isEmpty() && payload.todos.isEmpty() && payload.timelineEvents.isEmpty()) {
-            warnings += "?????????????????????????????"
+            warnings += "该备份中没有笔记、待办或时间轴数据。"
         }
         return warnings
     }
@@ -599,8 +599,8 @@ class DataBackupRepositoryImpl @Inject constructor(
 
     private fun defaultNameFor(type: CategoryType): String {
         return when (type) {
-            CategoryType.NOTE -> "??"
-            CategoryType.TODO -> "??"
+            CategoryType.NOTE -> "笔记"
+            CategoryType.TODO -> "待办"
         }
     }
 

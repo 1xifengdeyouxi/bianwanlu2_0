@@ -12,6 +12,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.swu.bianwanlu2_0.data.reminder.ReminderDeepLink
 import com.swu.bianwanlu2_0.data.reminder.ReminderDeepLinkContract
+import com.swu.bianwanlu2_0.data.reminder.ReminderCoordinator
 import com.swu.bianwanlu2_0.presentation.navigation.AppNavHost
 import com.swu.bianwanlu2_0.presentation.screens.profile.GeneralSettingsViewModel
 import com.swu.bianwanlu2_0.ui.theme.AppThemeMode
@@ -20,9 +21,13 @@ import com.swu.bianwanlu2_0.ui.theme.ProvideAppUiSettings
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject
+    lateinit var reminderCoordinator: ReminderCoordinator
+
     private val pendingReminderDeepLink = MutableStateFlow<ReminderDeepLink?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,6 +65,11 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingReminderDeepLink.value = ReminderDeepLinkContract.parse(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        reminderCoordinator.resyncAllAsync()
     }
 
     private fun consumeReminderDeepLink() {

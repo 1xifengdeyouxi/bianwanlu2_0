@@ -1,4 +1,4 @@
-﻿package com.swu.bianwanlu2_0.presentation.navigation
+package com.swu.bianwanlu2_0.presentation.navigation
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -387,7 +387,7 @@ fun AppNavHost(
                 if (noteCategories.isEmpty()) return
                 val note = noteViewModel.getNoteById(deepLink.itemId)
                 if (note == null) {
-                    Toast.makeText(context, "???????????", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "对应的笔记不存在或已删除", Toast.LENGTH_SHORT).show()
                     onReminderDeepLinkConsumed()
                     return
                 }
@@ -404,7 +404,7 @@ fun AppNavHost(
                 if (todoCategories.isEmpty()) return
                 val todo = todoViewModel.getTodoById(deepLink.itemId)
                 if (todo == null) {
-                    Toast.makeText(context, "???????????", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "对应的待办不存在或已删除", Toast.LENGTH_SHORT).show()
                     onReminderDeepLinkConsumed()
                     return
                 }
@@ -521,7 +521,7 @@ fun AppNavHost(
                             MyMenuAction.ReminderSettings -> pushMyPage(MyPageDestination.ReminderSettings)
                             MyMenuAction.DataAndSync -> {
                                 pendingDataSyncLaunchAction = null
-                                showFeatureInProgressDialog("数据与同步功能正在完善中")
+                                pushMyPage(MyPageDestination.DataAndSync)
                             }
                             MyMenuAction.GeneralSettings -> pushMyPage(MyPageDestination.GeneralSettings)
                             MyMenuAction.ContactUs -> showContactDialog = true

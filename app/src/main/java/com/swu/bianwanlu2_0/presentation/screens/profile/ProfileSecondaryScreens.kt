@@ -1,12 +1,16 @@
-﻿package com.swu.bianwanlu2_0.presentation.screens.profile
+package com.swu.bianwanlu2_0.presentation.screens.profile
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
@@ -72,6 +76,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.swu.bianwanlu2_0.R
+import com.swu.bianwanlu2_0.data.reminder.ReminderNotificationHelper
 import com.swu.bianwanlu2_0.ui.theme.AppFontSizeOption
 import com.swu.bianwanlu2_0.ui.theme.AppSkinOption
 import com.swu.bianwanlu2_0.ui.theme.AppThemeMode
@@ -93,15 +98,35 @@ fun ReminderSettingsScreen(
     val vibrationEnabled by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
     val calendarSyncEnabled by viewModel.calendarSyncEnabled.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val vibrationSupported = remember(context) { deviceSupportsReminderVibration(context) }
     var notificationEnabled by remember { mutableStateOf(isNotificationPermissionEnabled(context)) }
+    var headsUpEnabled by remember {
+        mutableStateOf(isReminderHeadsUpEnabled(context, vibrationEnabled))
+    }
     var exactAlarmEnabled by remember { mutableStateOf(isExactAlarmPermissionEnabled(context)) }
     var batteryOptimizationIgnored by remember { mutableStateOf(isBatteryOptimizationIgnored(context)) }
     var lastExactAlarmEnabled by remember { mutableStateOf(exactAlarmEnabled) }
+
+    val backgroundReminderStatus = when {
+        !notificationEnabled -> "需开启消息提醒"
+        !headsUpEnabled -> "需开启置顶通知"
+        !exactAlarmEnabled -> "建议开启精确提醒"
+        !batteryOptimizationIgnored -> "建议允许后台运行"
+        else -> "已就绪"
+    }
 
     val notificationSettingsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) {
         notificationEnabled = isNotificationPermissionEnabled(context)
+        headsUpEnabled = isReminderHeadsUpEnabled(context, vibrationEnabled)
+    }
+
+    val headsUpSettingsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) {
+        notificationEnabled = isNotificationPermissionEnabled(context)
+        headsUpEnabled = isReminderHeadsUpEnabled(context, vibrationEnabled)
     }
 
     val batteryOptimizationSettingsLauncher = rememberLauncherForActivityResult(
@@ -114,10 +139,11 @@ fun ReminderSettingsScreen(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
         notificationEnabled = isNotificationPermissionEnabled(context)
+        headsUpEnabled = isReminderHeadsUpEnabled(context, vibrationEnabled)
         if (granted && notificationEnabled) {
-            Toast.makeText(context, "???????", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "已开启消息提醒", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(context, "?????????????", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "未获得通知权限，请前往系统设置开启", Toast.LENGTH_SHORT).show()
             notificationSettingsLauncher.launch(createNotificationSettingsIntent(context))
         }
     }
@@ -129,14 +155,15 @@ fun ReminderSettingsScreen(
         if (granted && hasCalendarPermissions(context)) {
             viewModel.enableCalendarSync()
         } else {
-            Toast.makeText(context, "?????????????", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "未获得日历权限，无法同步到系统日历", Toast.LENGTH_SHORT).show()
         }
     }
 
-    DisposableEffect(lifecycleOwner, context) {
+    DisposableEffect(lifecycleOwner, context, vibrationEnabled) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 notificationEnabled = isNotificationPermissionEnabled(context)
+                headsUpEnabled = isReminderHeadsUpEnabled(context, vibrationEnabled)
                 exactAlarmEnabled = isExactAlarmPermissionEnabled(context)
                 batteryOptimizationIgnored = isBatteryOptimizationIgnored(context)
             }
@@ -161,17 +188,21 @@ fun ReminderSettingsScreen(
         lastExactAlarmEnabled = exactAlarmEnabled
     }
 
+    LaunchedEffect(vibrationEnabled, notificationEnabled) {
+        headsUpEnabled = isReminderHeadsUpEnabled(context, vibrationEnabled)
+    }
+
     ProfileScaffold(
-        title = "????",
+        title = "提醒设置",
         onBack = onBack,
         modifier = modifier,
     ) {
         SettingActionRow(
-            title = "????",
-            value = if (notificationEnabled) "???" else "???",
+            title = "消息提醒",
+            value = if (notificationEnabled) "已开启" else "去开启",
             onClick = {
                 if (notificationEnabled) {
-                    Toast.makeText(context, "?????????", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "通知权限已开启", Toast.LENGTH_SHORT).show()
                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     val runtimePermissionGranted = ContextCompat.checkSelfPermission(
                         context,
@@ -188,29 +219,113 @@ fun ReminderSettingsScreen(
             },
         )
         SettingActionRow(
-            title = "????",
-            value = if (exactAlarmEnabled) "???" else "???",
+            title = "精确提醒",
+            value = if (exactAlarmEnabled) "已开启" else "去开启",
             onClick = onOpenExactAlarmGuide,
         )
         SettingActionRow(
-            title = "\u540e\u53f0\u7701\u7535\u4fdd\u62a4",
-            value = if (batteryOptimizationIgnored) "\u5df2\u5141\u8bb8" else "\u53bb\u8bbe\u7f6e",
+            title = "置顶通知",
+            value = if (headsUpEnabled) "已开启" else "去开启",
+            onClick = {
+                if (!notificationEnabled) {
+                    Toast.makeText(context, "请先开启消息提醒，再设置置顶通知", Toast.LENGTH_SHORT).show()
+                    notificationSettingsLauncher.launch(createNotificationSettingsIntent(context))
+                } else {
+                    Toast.makeText(context, "请在系统页面确认横幅、悬浮和锁屏通知已开启", Toast.LENGTH_LONG).show()
+                    headsUpSettingsLauncher.launch(
+                        createReminderChannelSettingsIntent(context, vibrationEnabled),
+                    )
+                }
+            },
+        )
+        SettingActionRow(
+            title = "后台省电保护",
+            value = if (batteryOptimizationIgnored) "已允许" else "去设置",
             onClick = {
                 if (batteryOptimizationIgnored) {
-                    Toast.makeText(context, "\u5f53\u524d\u5df2\u5141\u8bb8\u4fbf\u73a9\u5f55\u540e\u53f0\u8fd0\u884c", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "当前已允许便玩录后台运行", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, "\u8bf7\u5728\u7cfb\u7edf\u7701\u7535\u7ba1\u7406\u9875\u9762\u5141\u8bb8\u4fbf\u73a9\u5f55\u540e\u53f0\u8fd0\u884c", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "请在系统省电管理页面允许便玩录后台运行", Toast.LENGTH_LONG).show()
                     batteryOptimizationSettingsLauncher.launch(createBatteryOptimizationSettingsIntent(context))
                 }
             },
         )
+        SettingActionRow(
+            title = "后台提醒诊断",
+            value = backgroundReminderStatus,
+            onClick = {
+                when {
+                    !notificationEnabled -> {
+                        Toast.makeText(context, "请先开启消息提醒，否则后台无法发送通知", Toast.LENGTH_LONG).show()
+                        notificationSettingsLauncher.launch(createNotificationSettingsIntent(context))
+                    }
+                    !headsUpEnabled -> {
+                        Toast.makeText(context, "请开启横幅、悬浮或锁屏提醒，否则通知可能不够明显", Toast.LENGTH_LONG).show()
+                        headsUpSettingsLauncher.launch(
+                            createReminderChannelSettingsIntent(context, vibrationEnabled),
+                        )
+                    }
+                    !exactAlarmEnabled -> {
+                        Toast.makeText(context, "建议开启精确提醒，避免系统在后台延迟提醒", Toast.LENGTH_LONG).show()
+                        onOpenExactAlarmGuide()
+                    }
+                    !batteryOptimizationIgnored -> {
+                        Toast.makeText(context, "请允许便玩录后台运行，避免省电策略拦截提醒", Toast.LENGTH_LONG).show()
+                        batteryOptimizationSettingsLauncher.launch(createBatteryOptimizationSettingsIntent(context))
+                    }
+                    else -> {
+                        Toast.makeText(context, "后台提醒链路已就绪，如仍无通知，请再检查系统自启动、勿扰和通知音量设置", Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+        )
+        SettingActionRow(
+            title = "\u6d4b\u8bd5\u63d0\u9192",
+            value = "5\u79d2\u540e\u89e6\u53d1",
+            onClick = {
+                if (!notificationEnabled) {
+                    Toast.makeText(context, "\u8bf7\u5148\u5f00\u542f\u6d88\u606f\u63d0\u9192\uff0c\u518d\u6d4b\u8bd5\u540e\u53f0\u901a\u77e5", Toast.LENGTH_SHORT).show()
+                    notificationSettingsLauncher.launch(createNotificationSettingsIntent(context))
+                } else {
+                    viewModel.scheduleDiagnosticReminder()
+                }
+            },
+        )
         SettingSwitchRow(
-            title = "??",
+            title = "震动",
             checked = vibrationEnabled,
             onCheckedChange = viewModel::setVibrationEnabled,
         )
+        SettingActionRow(
+            title = "震动预览",
+            value = if (vibrationSupported) "立即体验" else "设备不支持",
+            onClick = {
+                when {
+                    !vibrationSupported -> {
+                        Toast.makeText(context, "当前设备不支持震动提醒", Toast.LENGTH_SHORT).show()
+                    }
+                    !vibrationEnabled -> {
+                        Toast.makeText(context, "请先开启震动提醒，再体验震动预览", Toast.LENGTH_SHORT).show()
+                    }
+                    previewReminderVibration(context) -> {
+                        Toast.makeText(context, "已预览震动效果，后续提醒会使用相同节奏", Toast.LENGTH_SHORT).show()
+                    }
+                    else -> {
+                        Toast.makeText(context, "震动预览失败，请检查系统震动设置", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+        )
+        SettingActionRow(
+            title = "系统震动/铃声",
+            value = "去设置",
+            onClick = {
+                Toast.makeText(context, "请检查通知音量、铃声、震动及勿扰模式设置", Toast.LENGTH_LONG).show()
+                openSettingsSafely(context, createSystemSoundSettingsIntent())
+            },
+        )
         SettingSwitchRow(
-            title = "???????",
+            title = "系统日历同步",
             checked = calendarSyncEnabled,
             onCheckedChange = { enabled ->
                 if (enabled) {
@@ -278,7 +393,7 @@ fun ExactAlarmGuideScreen(
     }
 
     ProfileScaffold(
-        title = "????",
+        title = "精确提醒",
         onBack = onBack,
         modifier = modifier,
     ) {
@@ -287,7 +402,7 @@ fun ExactAlarmGuideScreen(
             enabled = exactAlarmEnabled,
             onClick = {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                    Toast.makeText(context, "??????????????", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "当前系统版本无需单独开启精确提醒", Toast.LENGTH_SHORT).show()
                 } else {
                     exactAlarmSettingsLauncher.launch(createExactAlarmSettingsIntent(context))
                 }
@@ -309,18 +424,18 @@ private fun ExactAlarmGuideStatusCard(enabled: Boolean) {
             .padding(horizontal = 18.dp, vertical = 18.dp),
     ) {
         Text(
-            text = "???????",
+            text = "开启说明",
             fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = Modifier.height(10.dp))
-        ReminderSettingsHintLine(text = "??????????????????????")
-        ReminderSettingsHintLine(text = "??????????????15?????????????")
-        ReminderSettingsHintLine(text = "??????????????????????????????")
+        ReminderSettingsHintLine(text = "精确提醒可提高到点通知和锁屏提醒的准时性。")
+        ReminderSettingsHintLine(text = "设置了优先级的事项会在提醒时间前15分钟额外发送一次通知。")
+        ReminderSettingsHintLine(text = "部分系统还需要允许后台运行，提醒才会更稳定。")
         Spacer(modifier = Modifier.height(14.dp))
         ExactAlarmStatusBadge(
-            text = if (enabled) "????????" else "????????",
+            text = if (enabled) "已开启精确提醒" else "未开启精确提醒",
             background = if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.error.copy(alpha = 0.10f),
             contentColor = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
         )
@@ -343,21 +458,21 @@ private fun ExactAlarmGuideActionCard(
             .padding(horizontal = 18.dp, vertical = 18.dp),
     ) {
         Text(
-            text = "????",
+            text = "前往设置",
             fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = Modifier.height(10.dp))
         Text(
-            text = if (enabled) "?????????????????????????" else "?????????????????????????",
+            text = if (enabled) "如果你已完成授权，可以再次进入系统页面确认当前开关状态。" else "点击下方按钮前往系统设置，开启便玩录的精确提醒权限。",
             fontSize = 14.sp,
             lineHeight = 22.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(16.dp))
         FilledGuideButton(
-            text = if (enabled) "????" else "????",
+            text = if (enabled) "再次检查" else "去设置",
             onClick = onClick,
         )
     }
@@ -427,24 +542,28 @@ private fun ReminderSettingsHintCard() {
             .padding(horizontal = 18.dp, vertical = 18.dp),
     ) {
         Text(
-            text = "????",
+            text = "使用提示",
             fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = Modifier.height(10.dp))
-        ReminderSettingsHintLine(text = "????????????????15?????????")
-        ReminderSettingsHintLine(text = "????????????????????????")
-        ReminderSettingsHintLine(text = "????????????????????????????")
-        ReminderSettingsHintLine(text = "??????????????????????????????????")
-        ReminderSettingsHintLine(text = "\u5982\u679c\u606f\u5c4f\u6216\u9000\u5230\u540e\u53f0\u540e\u63d0\u9192\u4ecd\u4e0d\u7a33\u5b9a\uff0c\u8bf7\u540c\u65f6\u5173\u95ed\u7cfb\u7edf\u7684\u7701\u7535\u9650\u5236")
+        ReminderSettingsHintLine(text = "设置了优先级的事项会在提醒时间前15分钟额外提醒一次。")
+        ReminderSettingsHintLine(text = "关闭消息提醒后，通知栏和锁屏提醒将无法正常显示。")
+        ReminderSettingsHintLine(text = "如果想像微信一样顶部弹出提醒，请在“置顶通知”里确认横幅和悬浮显示已开启。")
+        ReminderSettingsHintLine(text = "如果后台收不到提醒，可先点“后台提醒诊断”逐项检查消息提醒、置顶通知、精确提醒和省电限制。")
+        ReminderSettingsHintLine(text = "\u53ef\u4ee5\u5148\u70b9“\u6d4b\u8bd5\u63d0\u9192”，\u518d\u628a\u5e94\u7528\u9000\u5230\u540e\u53f0\u6216\u9501\u5c4f，\u81ea\u68c0\u901a\u77e5\u3001\u58f0\u97f3\u548c\u9707\u52a8\u662f\u5426\u6b63\u5e38。")
+        ReminderSettingsHintLine(text = "如果通知有弹出但没有声音或震动，可去“系统震动/铃声”里检查音量、触感和勿扰模式。")
+        ReminderSettingsHintLine(text = "开启系统日历同步后，可将提醒事项写入系统日历。")
+        ReminderSettingsHintLine(text = "部分系统需要允许后台运行和精确提醒，通知才会更稳定。")
+        ReminderSettingsHintLine(text = "如果息屏或退到后台后提醒仍不稳定，请同时关闭系统的省电限制。")
     }
 }
 
 @Composable
 private fun ReminderSettingsHintLine(text: String) {
     Text(
-        text = "? $text",
+        text = "• $text",
         fontSize = 14.sp,
         lineHeight = 22.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1758,6 +1877,88 @@ private fun createNotificationSettingsIntent(context: Context): Intent {
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", context.packageName, null)
         }
+    }
+}
+
+private fun createReminderChannelSettingsIntent(
+    context: Context,
+    vibrationEnabled: Boolean,
+): Intent {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            putExtra(
+                Settings.EXTRA_CHANNEL_ID,
+                if (vibrationEnabled) {
+                    ReminderNotificationHelper.CHANNEL_VIBRATION
+                } else {
+                    ReminderNotificationHelper.CHANNEL_SILENT
+                },
+            )
+        }
+    } else {
+        createNotificationSettingsIntent(context)
+    }
+}
+
+private fun isReminderHeadsUpEnabled(
+    context: Context,
+    vibrationEnabled: Boolean,
+): Boolean {
+    if (!isNotificationPermissionEnabled(context)) return false
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+    val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+    val channel = manager.getNotificationChannel(
+        if (vibrationEnabled) {
+            ReminderNotificationHelper.CHANNEL_VIBRATION
+        } else {
+            ReminderNotificationHelper.CHANNEL_SILENT
+        },
+    ) ?: return false
+    return channel.importance >= NotificationManager.IMPORTANCE_HIGH
+}
+
+private fun deviceSupportsReminderVibration(context: Context): Boolean {
+    return reminderVibrator(context)?.hasVibrator() == true
+}
+
+private fun previewReminderVibration(context: Context): Boolean {
+    val vibrator = reminderVibrator(context) ?: return false
+    return runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(
+                VibrationEffect.createWaveform(ReminderNotificationHelper.VIBRATION_PATTERN, -1),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(ReminderNotificationHelper.VIBRATION_PATTERN, -1)
+        }
+    }.isSuccess
+}
+
+private fun reminderVibrator(context: Context): Vibrator? {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    }
+}
+
+private fun createSystemSoundSettingsIntent(): Intent {
+    return Intent(Settings.ACTION_SOUND_SETTINGS)
+}
+
+private fun openSettingsSafely(context: Context, intent: Intent) {
+    runCatching {
+        context.startActivity(intent.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+    }.onFailure {
+        context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", context.packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+        )
     }
 }
 

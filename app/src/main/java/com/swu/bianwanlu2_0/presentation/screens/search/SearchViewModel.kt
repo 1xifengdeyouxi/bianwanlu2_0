@@ -28,8 +28,8 @@ import kotlinx.coroutines.launch
 private const val SEARCH_HISTORY_SAVE_DELAY = 600L
 
 enum class SearchItemType(val label: String) {
-    NOTE("??"),
-    TODO("??"),
+    NOTE("笔记"),
+    TODO("待办"),
 }
 
 data class SearchCategoryOption(
@@ -96,14 +96,14 @@ class SearchViewModel @Inject constructor(
     val categoryOptions: StateFlow<List<SearchCategoryOption>> = allCategories
         .combine(_selectedCategoryId) { categories, _ ->
             buildList {
-                add(SearchCategoryOption(id = null, label = "????"))
+                add(SearchCategoryOption(id = null, label = "全部分类"))
                 categories
                     .sortedWith(compareBy<Category>({ it.type.ordinal }, { it.sortOrder }, { it.id }))
                     .forEach { category ->
                         add(
                             SearchCategoryOption(
                                 id = category.id,
-                                label = "${category.type.displayLabel()} ? ${category.name}",
+                                label = "${category.type.displayLabel()} · ${category.name}",
                             ),
                         )
                     }
@@ -112,7 +112,7 @@ class SearchViewModel @Inject constructor(
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5_000),
-            listOf(SearchCategoryOption(null, "????")),
+            listOf(SearchCategoryOption(null, "全部分类")),
         )
 
     val results: StateFlow<List<SearchResultItem>> = combine(
@@ -292,13 +292,13 @@ class SearchViewModel @Inject constructor(
 
     private fun buildCategoryLabel(type: SearchItemType, categoryName: String): String {
         if (categoryName.isBlank()) return type.label
-        return "${type.label} ? $categoryName"
+        return "${type.label} · $categoryName"
     }
 
     private fun com.swu.bianwanlu2_0.data.local.entity.CategoryType.displayLabel(): String {
         return when (this) {
-            com.swu.bianwanlu2_0.data.local.entity.CategoryType.NOTE -> "??"
-            com.swu.bianwanlu2_0.data.local.entity.CategoryType.TODO -> "??"
+            com.swu.bianwanlu2_0.data.local.entity.CategoryType.NOTE -> "笔记"
+            com.swu.bianwanlu2_0.data.local.entity.CategoryType.TODO -> "待办"
         }
     }
 }

@@ -8,6 +8,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import com.swu.bianwanlu2_0.data.reminder.ReminderTriggerType
 import android.os.Build
 import com.swu.bianwanlu2_0.data.local.ReminderSettingsStore
@@ -26,6 +28,11 @@ class ReminderNotificationHelper @Inject constructor(
     fun ensureChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java)
+        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val soundAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
         val silentChannel = NotificationChannel(
             CHANNEL_SILENT,
             "便玩录提醒",
@@ -33,6 +40,8 @@ class ReminderNotificationHelper @Inject constructor(
         ).apply {
             description = "到时间后发送笔记和待办提醒"
             enableVibration(false)
+            enableLights(true)
+            setSound(defaultSoundUri, soundAttributes)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         val vibrationChannel = NotificationChannel(
@@ -42,7 +51,9 @@ class ReminderNotificationHelper @Inject constructor(
         ).apply {
             description = "到时间后发送笔记和待办提醒，并带震动"
             enableVibration(true)
+            enableLights(true)
             vibrationPattern = VIBRATION_PATTERN
+            setSound(defaultSoundUri, soundAttributes)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         manager.createNotificationChannel(silentChannel)
@@ -56,8 +67,8 @@ class ReminderNotificationHelper @Inject constructor(
         detailText: String,
         reminderTime: Long,
         isEarlyReminder: Boolean,
-    ) {
-        if (!canPostNotifications()) return
+    ): Boolean {
+        if (!canPostNotifications()) return false
 
         ensureChannels()
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -89,12 +100,52 @@ class ReminderNotificationHelper @Inject constructor(
                 createSnoozeActionIntent(itemType, itemId)?.let { addAction(android.R.drawable.ic_popup_reminder, "\u7a0d\u540e10\u5206\u949f", it) }
                 createCompleteActionIntent(itemType, itemId)?.let { addAction(android.R.drawable.checkbox_on_background, "\u5b8c\u6210", it) }
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && reminderSettingsStore.isVibrationEnabled()) {
+                    setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
                     setVibrate(VIBRATION_PATTERN)
                 }
             }
             .build()
 
-        manager.notify(buildNotificationId(itemType, itemId, isEarlyReminder), notification)
+        return runCatching {
+            manager.notify(buildNotificationId(itemType, itemId, isEarlyReminder), notification)
+        }.isSuccess
+    }
+
+    fun showDiagnosticNotification(triggerAtMillis: Long = System.currentTimeMillis()): Boolean {
+        if (!canPostNotifications()) return false
+
+        ensureChannels()
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val notification = createBuilder(isEarlyReminder = false)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setContentTitle("\u6d4b\u8bd5\u63d0\u9192\u5df2\u9001\u8fbe")
+            .setContentText("\u5982\u679c\u4f60\u5728\u540e\u53f0\u6216\u9501\u5c4f\u4e5f\u80fd\u770b\u5230\u8fd9\u6761\u901a\u77e5\uff0c\u8bf4\u660e\u63d0\u9192\u6743\u9650\u548c\u6e20\u9053\u57fa\u672c\u6b63\u5e38")
+            .setStyle(
+                Notification.BigTextStyle().bigText(
+                    "\u5982\u679c\u8fd9\u6761\u901a\u77e5\u6ca1\u6709\u58f0\u97f3\u3001\u9707\u52a8\u6216\u6a2a\u5e45\uff0c\u8bf7\u53bb\u63d0\u9192\u8bbe\u7f6e\u91cc\u7ee7\u7eed\u68c0\u67e5\u7f6e\u9876\u901a\u77e5\u3001\u7cfb\u7edf\u9707\u52a8/\u94c3\u58f0\u548c\u540e\u53f0\u7701\u7535\u4fdd\u62a4\u3002\n\u6d4b\u8bd5\u65f6\u95f4\uff1a${formatReminderTime(triggerAtMillis)}",
+                ),
+            )
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(true)
+            .setWhen(System.currentTimeMillis())
+            .setSubText("\u4fbf\u73a9\u5f55")
+            .apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    setCategory(Notification.CATEGORY_ALARM)
+                    setVisibility(Notification.VISIBILITY_PUBLIC)
+                }
+                createAppContentIntent()?.let(::setContentIntent)
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && reminderSettingsStore.isVibrationEnabled()) {
+                    setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
+                    setVibrate(VIBRATION_PATTERN)
+                }
+            }
+            .build()
+
+        return runCatching {
+            manager.notify(DIAGNOSTIC_NOTIFICATION_ID, notification)
+        }.isSuccess
     }
 
     private fun createBuilder(isEarlyReminder: Boolean): Notification.Builder {
@@ -105,6 +156,7 @@ class ReminderNotificationHelper @Inject constructor(
             )
         } else {
             Notification.Builder(context).apply {
+                setDefaults(Notification.DEFAULT_SOUND)
                 setPriority(
                     if (isEarlyReminder) {
                         Notification.PRIORITY_MAX
@@ -205,6 +257,20 @@ class ReminderNotificationHelper @Inject constructor(
         )
     }
 
+    private fun createAppContentIntent(): PendingIntent? {
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            ?: return null
+        return PendingIntent.getActivity(
+            context,
+            DIAGNOSTIC_NOTIFICATION_ID,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     private fun canPostNotifications(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
@@ -243,13 +309,16 @@ class ReminderNotificationHelper @Inject constructor(
         return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(reminderTime))
     }
 
-    private companion object {
-        const val CHANNEL_SILENT = "bianwanlu_reminder_silent"
-        const val CHANNEL_VIBRATION = "bianwanlu_reminder_vibration"
+    companion object {
+        const val CHANNEL_SILENT = "bianwanlu_reminder_silent_v2"
+        const val CHANNEL_VIBRATION = "bianwanlu_reminder_vibration_v2"
         const val ACTION_REMINDER_COMPLETE = "com.swu.bianwanlu2_0.action.REMINDER_COMPLETE"
         const val ACTION_REMINDER_SNOOZE = "com.swu.bianwanlu2_0.action.REMINDER_SNOOZE"
+        const val ACTION_DIAGNOSTIC_REMINDER = "com.swu.bianwanlu2_0.action.DIAGNOSTIC_REMINDER"
         const val EXTRA_ITEM_TYPE = "extra_item_type"
         const val EXTRA_ITEM_ID = "extra_item_id"
+        const val EXTRA_DIAGNOSTIC_TRIGGER_AT = "extra_diagnostic_trigger_at"
         val VIBRATION_PATTERN = longArrayOf(0L, 180L, 120L, 220L)
+        private const val DIAGNOSTIC_NOTIFICATION_ID = 874523
     }
 }

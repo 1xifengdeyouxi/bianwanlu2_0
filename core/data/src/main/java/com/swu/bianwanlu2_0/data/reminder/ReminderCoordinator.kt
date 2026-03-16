@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import com.swu.bianwanlu2_0.data.local.CalendarSyncStore
 import com.swu.bianwanlu2_0.data.local.CurrentUserStore
+import com.swu.bianwanlu2_0.data.local.ReminderDeliveryStore
 import com.swu.bianwanlu2_0.data.local.ReminderSettingsStore
 import com.swu.bianwanlu2_0.data.local.dao.CategoryDao
 import com.swu.bianwanlu2_0.data.local.dao.NoteDao
@@ -39,6 +40,7 @@ class ReminderCoordinator @Inject constructor(
     private val timelineEventRepository: TimelineEventRepository,
     private val currentUserStore: CurrentUserStore,
     private val reminderSettingsStore: ReminderSettingsStore,
+    private val reminderDeliveryStore: ReminderDeliveryStore,
     private val calendarSyncStore: CalendarSyncStore,
     private val systemCalendarSyncHelper: SystemCalendarSyncHelper,
     private val reminderNotificationHelper: ReminderNotificationHelper,
@@ -51,6 +53,27 @@ class ReminderCoordinator @Inject constructor(
 
     fun resyncAllAsync() {
         scope.launch { resyncAll() }
+    }
+
+    fun scheduleDiagnosticReminder(delayMillis: Long = DIAGNOSTIC_REMINDER_DELAY_MS): Boolean {
+        val safeDelayMillis = delayMillis.coerceAtLeast(1_000L)
+        val triggerAtMillis = System.currentTimeMillis() + safeDelayMillis
+        val pendingIntent = createDiagnosticPendingIntent(triggerAtMillis)
+        alarmManager.cancel(pendingIntent)
+
+        return runCatching {
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms() -> {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                }
+                else -> {
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                }
+            }
+        }.isSuccess
     }
 
     suspend fun resyncAll() {
@@ -94,11 +117,13 @@ class ReminderCoordinator @Inject constructor(
 
     suspend fun removeNote(note: Note) {
         cancelReminderAlarms(ReminderItemType.NOTE, note.id)
+        reminderDeliveryStore.clearForItem(ReminderItemType.NOTE, note.id)
         removeCalendarEntry(ReminderItemType.NOTE, note.id)
     }
 
     suspend fun removeTodo(todo: Todo) {
         cancelReminderAlarms(ReminderItemType.TODO, todo.id)
+        reminderDeliveryStore.clearForItem(ReminderItemType.TODO, todo.id)
         removeCalendarEntry(ReminderItemType.TODO, todo.id)
     }
 
@@ -147,6 +172,14 @@ class ReminderCoordinator @Inject constructor(
                     ReminderItemType.TODO -> snoozeTodoReminder(payload.itemId)
                 }
             }
+
+            ReminderNotificationHelper.ACTION_DIAGNOSTIC_REMINDER -> {
+                val triggerAtMillis = intent.getLongExtra(
+                    ReminderNotificationHelper.EXTRA_DIAGNOSTIC_TRIGGER_AT,
+                    System.currentTimeMillis(),
+                )
+                reminderNotificationHelper.showDiagnosticNotification(triggerAtMillis)
+            }
         }
     }
 
@@ -154,11 +187,21 @@ class ReminderCoordinator @Inject constructor(
         val note = noteDao.getById(payload.itemId).first() ?: return
         val reminderTime = note.reminderTime ?: return
         if (note.status != NoteStatus.ACTIVE || reminderTime != payload.scheduledReminderTime) return
+        val deliveryTriggerType = payload.triggerType.normalizedDeliveryTriggerType()
         if (payload.triggerType == ReminderTriggerType.EARLY) {
             if (!note.isPriority || System.currentTimeMillis() >= reminderTime) return
         }
+        if (reminderDeliveryStore.wasDelivered(
+                itemType = ReminderItemType.NOTE,
+                itemId = note.id,
+                triggerType = deliveryTriggerType,
+                scheduledReminderTime = reminderTime,
+            )
+        ) {
+            return
+        }
 
-        reminderNotificationHelper.showReminderNotification(
+        val delivered = reminderNotificationHelper.showReminderNotification(
             itemType = ReminderItemType.NOTE,
             itemId = note.id,
             displayTitle = buildNoteDisplayTitle(note),
@@ -166,17 +209,35 @@ class ReminderCoordinator @Inject constructor(
             reminderTime = reminderTime,
             isEarlyReminder = payload.triggerType == ReminderTriggerType.EARLY,
         )
+        if (delivered) {
+            reminderDeliveryStore.markDelivered(
+                itemType = ReminderItemType.NOTE,
+                itemId = note.id,
+                triggerType = deliveryTriggerType,
+                scheduledReminderTime = reminderTime,
+            )
+        }
     }
 
     private suspend fun handleTodoAlarm(payload: AlarmPayload) {
         val todo = todoDao.getById(payload.itemId).first() ?: return
         val reminderTime = todo.reminderTime ?: return
         if (todo.status != TodoStatus.ACTIVE || reminderTime != payload.scheduledReminderTime) return
+        val deliveryTriggerType = payload.triggerType.normalizedDeliveryTriggerType()
         if (payload.triggerType == ReminderTriggerType.EARLY) {
             if (!todo.isPriority || System.currentTimeMillis() >= reminderTime) return
         }
+        if (reminderDeliveryStore.wasDelivered(
+                itemType = ReminderItemType.TODO,
+                itemId = todo.id,
+                triggerType = deliveryTriggerType,
+                scheduledReminderTime = reminderTime,
+            )
+        ) {
+            return
+        }
 
-        reminderNotificationHelper.showReminderNotification(
+        val delivered = reminderNotificationHelper.showReminderNotification(
             itemType = ReminderItemType.TODO,
             itemId = todo.id,
             displayTitle = buildTodoDisplayTitle(todo),
@@ -184,6 +245,14 @@ class ReminderCoordinator @Inject constructor(
             reminderTime = reminderTime,
             isEarlyReminder = payload.triggerType == ReminderTriggerType.EARLY,
         )
+        if (delivered) {
+            reminderDeliveryStore.markDelivered(
+                itemType = ReminderItemType.TODO,
+                itemId = todo.id,
+                triggerType = deliveryTriggerType,
+                scheduledReminderTime = reminderTime,
+            )
+        }
     }
 
     private suspend fun completeNoteFromReminder(itemId: Long) {
@@ -192,6 +261,7 @@ class ReminderCoordinator @Inject constructor(
             return
         }
         reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.NOTE, itemId)
+        reminderDeliveryStore.clearForItem(ReminderItemType.NOTE, itemId)
         if (note.status == NoteStatus.COMPLETED) return
 
         val now = System.currentTimeMillis()
@@ -210,6 +280,7 @@ class ReminderCoordinator @Inject constructor(
             return
         }
         reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.TODO, itemId)
+        reminderDeliveryStore.clearForItem(ReminderItemType.TODO, itemId)
         if (todo.status == TodoStatus.COMPLETED) return
 
         val now = System.currentTimeMillis()
@@ -229,6 +300,7 @@ class ReminderCoordinator @Inject constructor(
             return
         }
         reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.NOTE, itemId)
+        reminderDeliveryStore.clearForItem(ReminderItemType.NOTE, itemId)
         if (note.status != NoteStatus.ACTIVE) return
 
         val now = System.currentTimeMillis()
@@ -248,6 +320,7 @@ class ReminderCoordinator @Inject constructor(
             return
         }
         reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.TODO, itemId)
+        reminderDeliveryStore.clearForItem(ReminderItemType.TODO, itemId)
         if (todo.status != TodoStatus.ACTIVE) return
 
         val now = System.currentTimeMillis()
@@ -343,6 +416,7 @@ class ReminderCoordinator @Inject constructor(
 
         notes.forEach { syncNote(it) }
         todos.forEach { syncTodo(it) }
+        deliverMissedNotifications(notes, todos)
 
         cleanupOrphanedCalendarMappings(notes, todos)
     }
@@ -354,11 +428,115 @@ class ReminderCoordinator @Inject constructor(
 
         notes.forEach { note ->
             cancelReminderAlarms(ReminderItemType.NOTE, note.id)
+            reminderDeliveryStore.clearForItem(ReminderItemType.NOTE, note.id)
             removeCalendarEntry(ReminderItemType.NOTE, note.id)
         }
         todos.forEach { todo ->
             cancelReminderAlarms(ReminderItemType.TODO, todo.id)
+            reminderDeliveryStore.clearForItem(ReminderItemType.TODO, todo.id)
             removeCalendarEntry(ReminderItemType.TODO, todo.id)
+        }
+    }
+
+    private suspend fun deliverMissedNotifications(
+        notes: List<Note>,
+        todos: List<Todo>,
+    ) {
+        val now = System.currentTimeMillis()
+        notes.forEach { note ->
+            maybeDeliverMissedNotification(
+                itemType = ReminderItemType.NOTE,
+                itemId = note.id,
+                reminderTime = note.reminderTime,
+                isPriority = note.isPriority,
+                isActive = note.status == NoteStatus.ACTIVE,
+                displayTitle = buildNoteDisplayTitle(note),
+                detailText = buildNoteDetailText(note),
+                now = now,
+            )
+        }
+        todos.forEach { todo ->
+            maybeDeliverMissedNotification(
+                itemType = ReminderItemType.TODO,
+                itemId = todo.id,
+                reminderTime = todo.reminderTime,
+                isPriority = todo.isPriority,
+                isActive = todo.status == TodoStatus.ACTIVE,
+                displayTitle = buildTodoDisplayTitle(todo),
+                detailText = buildTodoDetailText(todo),
+                now = now,
+            )
+        }
+    }
+
+    private fun maybeDeliverMissedNotification(
+        itemType: ReminderItemType,
+        itemId: Long,
+        reminderTime: Long?,
+        isPriority: Boolean,
+        isActive: Boolean,
+        displayTitle: String,
+        detailText: String,
+        now: Long,
+    ) {
+        if (!isActive || reminderTime == null) return
+
+        if (isPriority) {
+            val earlyReminderTime = reminderTime - EARLY_REMINDER_OFFSET_MS
+            val shouldDeliverEarly = earlyReminderTime <= now &&
+                now < reminderTime &&
+                now - earlyReminderTime <= MISSED_REMINDER_MAX_LATENESS_MS &&
+                !reminderDeliveryStore.wasDelivered(
+                    itemType = itemType,
+                    itemId = itemId,
+                    triggerType = ReminderTriggerType.EARLY,
+                    scheduledReminderTime = reminderTime,
+                )
+            if (shouldDeliverEarly) {
+                val delivered = reminderNotificationHelper.showReminderNotification(
+                    itemType = itemType,
+                    itemId = itemId,
+                    displayTitle = displayTitle,
+                    detailText = detailText,
+                    reminderTime = reminderTime,
+                    isEarlyReminder = true,
+                )
+                if (delivered) {
+                    reminderDeliveryStore.markDelivered(
+                        itemType = itemType,
+                        itemId = itemId,
+                        triggerType = ReminderTriggerType.EARLY,
+                        scheduledReminderTime = reminderTime,
+                    )
+                }
+            }
+        }
+
+        val shouldDeliverDue = reminderTime <= now &&
+            now - reminderTime <= MISSED_REMINDER_MAX_LATENESS_MS &&
+            !reminderDeliveryStore.wasDelivered(
+                itemType = itemType,
+                itemId = itemId,
+                triggerType = ReminderTriggerType.DUE,
+                scheduledReminderTime = reminderTime,
+            )
+        if (!shouldDeliverDue) return
+
+        val delivered = reminderNotificationHelper.showReminderNotification(
+            itemType = itemType,
+            itemId = itemId,
+            displayTitle = displayTitle,
+            detailText = detailText,
+            reminderTime = reminderTime,
+            isEarlyReminder = false,
+        )
+        if (delivered) {
+            reminderDeliveryStore.markDelivered(
+                itemType = itemType,
+                itemId = itemId,
+                triggerType = ReminderTriggerType.DUE,
+                scheduledReminderTime = reminderTime,
+            )
         }
     }
 
@@ -387,6 +565,17 @@ class ReminderCoordinator @Inject constructor(
             scheduledReminderTime = reminderTime,
             triggerType = ReminderTriggerType.DUE,
         )
+
+        val backupTriggerAtMillis = reminderTime + BACKUP_REMINDER_OFFSET_MS
+        if (backupTriggerAtMillis > System.currentTimeMillis()) {
+            scheduleAlarm(
+                itemType = itemType,
+                itemId = itemId,
+                triggerAtMillis = backupTriggerAtMillis,
+                scheduledReminderTime = reminderTime,
+                triggerType = ReminderTriggerType.DUE_BACKUP,
+            )
+        }
 
         if (isPriority) {
             val earlyTriggerTime = reminderTime - EARLY_REMINDER_OFFSET_MS
@@ -509,6 +698,19 @@ class ReminderCoordinator @Inject constructor(
         )
     }
 
+    private fun createDiagnosticPendingIntent(triggerAtMillis: Long): PendingIntent {
+        val intent = Intent(appContext, ReminderAlarmReceiver::class.java).apply {
+            action = ReminderNotificationHelper.ACTION_DIAGNOSTIC_REMINDER
+            putExtra(ReminderNotificationHelper.EXTRA_DIAGNOSTIC_TRIGGER_AT, triggerAtMillis)
+        }
+        return PendingIntent.getBroadcast(
+            appContext,
+            DIAGNOSTIC_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     private fun parseActionPayload(intent: Intent): ActionPayload? {
         val itemType = intent.getStringExtra(EXTRA_ITEM_TYPE)?.let {
             runCatching { ReminderItemType.valueOf(it) }.getOrNull()
@@ -536,6 +738,10 @@ class ReminderCoordinator @Inject constructor(
             scheduledReminderTime = scheduledReminderTime,
             triggerType = triggerType,
         )
+    }
+
+    private fun ReminderTriggerType.normalizedDeliveryTriggerType(): ReminderTriggerType {
+        return if (this == ReminderTriggerType.DUE_BACKUP) ReminderTriggerType.DUE else this
     }
 
     private fun buildRequestCode(
@@ -692,6 +898,10 @@ class ReminderCoordinator @Inject constructor(
         private const val EXTRA_SCHEDULED_REMINDER_TIME = "extra_scheduled_reminder_time"
         private const val EXTRA_TRIGGER_TYPE = "extra_trigger_type"
         private const val EARLY_REMINDER_OFFSET_MS = 15 * 60 * 1000L
+        private const val BACKUP_REMINDER_OFFSET_MS = 2 * 60 * 1000L
+        private const val MISSED_REMINDER_MAX_LATENESS_MS = 24 * 60 * 60 * 1000L
         private const val SNOOZE_REMINDER_OFFSET_MS = 10 * 60 * 1000L
+        private const val DIAGNOSTIC_REMINDER_DELAY_MS = 5_000L
+        private const val DIAGNOSTIC_REQUEST_CODE = 874524
     }
 }

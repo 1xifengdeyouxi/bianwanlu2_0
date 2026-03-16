@@ -7,6 +7,7 @@ enum class ReminderItemType {
 
 enum class ReminderTriggerType {
     DUE,
+    DUE_BACKUP,
     EARLY,
 }
 

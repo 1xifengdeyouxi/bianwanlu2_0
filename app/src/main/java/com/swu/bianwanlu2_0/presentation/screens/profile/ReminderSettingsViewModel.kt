@@ -25,6 +25,11 @@ class ReminderSettingsViewModel @Inject constructor(
 
     fun setVibrationEnabled(enabled: Boolean) {
         reminderSettingsStore.setVibrationEnabled(enabled)
+        _message.value = if (enabled) {
+            "震动提醒已开启，你可以点一下“震动预览”试试效果"
+        } else {
+            "震动提醒已关闭，后续通知将只保留铃声和横幅提醒"
+        }
     }
 
     fun enableCalendarSync() {
@@ -54,7 +59,16 @@ class ReminderSettingsViewModel @Inject constructor(
     fun onExactAlarmPermissionGranted() {
         viewModelScope.launch {
             reminderCoordinator.resyncAll()
-            _message.value = "\u7cbe\u786e\u63d0\u9192\u5df2\u5f00\u542f\uff0c\u540e\u53f0\u63d0\u9192\u5df2\u91cd\u65b0\u540c\u6b65"
+            _message.value = "精确提醒已开启，后台提醒已重新同步"
+        }
+    }
+
+    fun scheduleDiagnosticReminder() {
+        val scheduled = reminderCoordinator.scheduleDiagnosticReminder()
+        _message.value = if (scheduled) {
+            "已安排 5 秒后发送测试提醒，请立即退到后台或锁屏后验证"
+        } else {
+            "测试提醒安排失败，请先检查精确提醒、通知权限和系统限制"
         }
     }
 
