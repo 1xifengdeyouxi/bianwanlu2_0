@@ -21,4 +21,7 @@ interface TimelineEventDao {
 
     @Query("DELETE FROM timeline_events WHERE user_id = :userId")
     suspend fun deleteAllByUser(userId: Long)
+
+    @Query("UPDATE timeline_events SET user_id = :targetUserId WHERE user_id = :sourceUserId")
+    suspend fun reassignUser(sourceUserId: Long, targetUserId: Long)
 }

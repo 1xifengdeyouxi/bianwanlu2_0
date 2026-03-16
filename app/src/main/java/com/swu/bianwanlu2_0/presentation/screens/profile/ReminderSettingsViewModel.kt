@@ -51,6 +51,13 @@ class ReminderSettingsViewModel @Inject constructor(
         }
     }
 
+    fun onExactAlarmPermissionGranted() {
+        viewModelScope.launch {
+            reminderCoordinator.resyncAll()
+            _message.value = "\u7cbe\u786e\u63d0\u9192\u5df2\u5f00\u542f\uff0c\u540e\u53f0\u63d0\u9192\u5df2\u91cd\u65b0\u540c\u6b65"
+        }
+    }
+
     fun consumeMessage() {
         _message.value = null
     }

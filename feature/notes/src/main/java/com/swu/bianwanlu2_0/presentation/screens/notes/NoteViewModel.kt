@@ -1,8 +1,9 @@
-﻿package com.swu.bianwanlu2_0.presentation.screens.notes
+package com.swu.bianwanlu2_0.presentation.screens.notes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.swu.bianwanlu2_0.data.local.CategorySelectionStore
+import com.swu.bianwanlu2_0.data.local.CurrentUserStore
 import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
 import com.swu.bianwanlu2_0.data.local.entity.Note
@@ -10,18 +11,20 @@ import com.swu.bianwanlu2_0.data.local.entity.NoteStatus
 import com.swu.bianwanlu2_0.data.local.entity.TimelineActionType
 import com.swu.bianwanlu2_0.data.local.entity.TimelineEvent
 import com.swu.bianwanlu2_0.data.local.entity.TimelineItemType
-import com.swu.bianwanlu2_0.data.repository.CategoryRepository
 import com.swu.bianwanlu2_0.data.reminder.ReminderCoordinator
+import com.swu.bianwanlu2_0.data.repository.CategoryRepository
 import com.swu.bianwanlu2_0.data.repository.NoteRepository
 import com.swu.bianwanlu2_0.data.repository.TimelineEventRepository
-import com.swu.bianwanlu2_0.utils.GUEST_USER_ID
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.Calendar
+import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -30,8 +33,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import javax.inject.Inject
 
 enum class NoteFilter(val label: String) {
     ALL("全部"),
@@ -39,7 +40,7 @@ enum class NoteFilter(val label: String) {
     EXPIRED("已过期"),
     TODAY("今天"),
     RECENT_7_DAYS("最近"),
-    HIGH_PRIORITY("高级优先")
+    HIGH_PRIORITY("高级优先"),
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -50,10 +51,13 @@ class NoteViewModel @Inject constructor(
     private val categorySelectionStore: CategorySelectionStore,
     private val timelineEventRepository: TimelineEventRepository,
     private val reminderCoordinator: ReminderCoordinator,
+    private val currentUserStore: CurrentUserStore,
 ) : ViewModel() {
 
-    val categories: StateFlow<List<Category>> = categoryRepository
-        .getCategories(GUEST_USER_ID, CategoryType.NOTE)
+    val categories: StateFlow<List<Category>> = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            categoryRepository.getCategories(userId, CategoryType.NOTE)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _selectedCategory = MutableStateFlow<Category?>(null)
@@ -71,14 +75,15 @@ class NoteViewModel @Inject constructor(
         selectionOverride || selectedIds.isNotEmpty()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    private val notesByCategory: Flow<List<Note>> = _selectedCategory
-        .flatMapLatest { category ->
-            if (category == null) {
-                flowOf(emptyList())
-            } else {
-                noteRepository.getNotesByCategory(GUEST_USER_ID, category.id)
-            }
+    private val notesByCategory: Flow<List<Note>> = combine(currentUserStore.currentUserId, _selectedCategory) { userId, category ->
+        userId to category
+    }.flatMapLatest { (userId, category) ->
+        if (category == null) {
+            flowOf(emptyList())
+        } else {
+            noteRepository.getNotesByCategory(userId, category.id)
         }
+    }
 
     val notes: StateFlow<List<Note>> = notesByCategory
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -99,34 +104,37 @@ class NoteViewModel @Inject constructor(
         list.filter { it.id in selectedIds }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val noteCount: StateFlow<Int> = _selectedCategory
-        .flatMapLatest { category ->
-            if (category == null) {
-                flowOf(0)
-            } else {
-                noteRepository.countNotesByCategory(GUEST_USER_ID, category.id)
-            }
+    val noteCount: StateFlow<Int> = combine(currentUserStore.currentUserId, _selectedCategory) { userId, category ->
+        userId to category
+    }.flatMapLatest { (userId, category) ->
+        if (category == null) {
+            flowOf(0)
+        } else {
+            noteRepository.countNotesByCategory(userId, category.id)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    val selectedCategoryName: StateFlow<String> = MutableStateFlow("笔记").also { flow ->
-        viewModelScope.launch {
-            _selectedCategory.collect { category ->
-                flow.value = category?.name ?: "笔记"
-            }
-        }
-    }
+    val selectedCategoryName: StateFlow<String> = _selectedCategory
+        .map { category -> category?.name ?: "未分类" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "未分类")
 
     init {
         viewModelScope.launch {
-            categoryRepository.ensureDefaultCategory(GUEST_USER_ID, CategoryType.NOTE)
+            currentUserStore.currentUserId
+                .collect { userId ->
+                    clearSelection()
+                    _selectedCategory.value = null
+                    categoryRepository.ensureDefaultCategory(userId, CategoryType.NOTE)
+                }
         }
 
         viewModelScope.launch {
-            categories.collect { categoryList ->
+            combine(currentUserStore.currentUserId, categories) { userId, categoryList ->
+                userId to categoryList
+            }.collect { (userId, categoryList) ->
                 if (categoryList.isEmpty()) return@collect
 
-                val savedCategoryId = categorySelectionStore.getSelectedCategoryId(CategoryType.NOTE)
+                val savedCategoryId = categorySelectionStore.getSelectedCategoryId(userId, CategoryType.NOTE)
                 val currentCategory = _selectedCategory.value
                 val matchedCategory = when {
                     currentCategory != null -> categoryList.firstOrNull { it.id == currentCategory.id }
@@ -138,7 +146,7 @@ class NoteViewModel @Inject constructor(
                     _selectedCategory.value = matchedCategory
                 }
 
-                categorySelectionStore.setSelectedCategoryId(CategoryType.NOTE, matchedCategory?.id)
+                categorySelectionStore.setSelectedCategoryId(userId, CategoryType.NOTE, matchedCategory?.id)
             }
         }
 
@@ -158,7 +166,11 @@ class NoteViewModel @Inject constructor(
     fun selectCategory(category: Category?) {
         clearSelection()
         _selectedCategory.value = category
-        categorySelectionStore.setSelectedCategoryId(CategoryType.NOTE, category?.id)
+        categorySelectionStore.setSelectedCategoryId(
+            currentUserStore.peekCurrentUserId(),
+            CategoryType.NOTE,
+            category?.id,
+        )
     }
 
     fun setFilter(filter: NoteFilter) {
@@ -277,8 +289,8 @@ class NoteViewModel @Inject constructor(
                 noteRepository.update(
                     note.copy(
                         sortOrder = baseOrder - index,
-                        updatedAt = now
-                    )
+                        updatedAt = now,
+                    ),
                 )
             }
         }
@@ -291,7 +303,7 @@ class NoteViewModel @Inject constructor(
         isPriority: Boolean = false,
         cardColor: Long = Note.DEFAULT_CARD_COLOR,
         textColor: Long = Note.DEFAULT_TEXT_COLOR,
-        imageUris: String = ""
+        imageUris: String = "",
     ) {
         if (title.isBlank() && content.isBlank() && imageUris.isBlank()) return
         viewModelScope.launch {
@@ -307,7 +319,7 @@ class NoteViewModel @Inject constructor(
                 imageUris = imageUris,
                 createdAt = now,
                 updatedAt = now,
-                userId = GUEST_USER_ID,
+                userId = currentUserStore.peekCurrentUserId(),
             )
             val noteId = noteRepository.insert(newNote)
             val savedNote = newNote.copy(id = noteId)
@@ -331,7 +343,7 @@ class NoteViewModel @Inject constructor(
         isPriority: Boolean,
         cardColor: Long,
         textColor: Long,
-        imageUris: String
+        imageUris: String,
     ) {
         if (title.isBlank() && content.isBlank() && imageUris.isBlank()) return
         viewModelScope.launch {
@@ -406,13 +418,13 @@ class NoteViewModel @Inject constructor(
                 itemType = TimelineItemType.NOTE,
                 actionType = actionType,
                 categoryId = note.categoryId,
-                categoryName = resolveCategoryName(note.categoryId, "笔记"),
+                categoryName = resolveCategoryName(note.categoryId, "未分类"),
                 title = note.title.trim(),
                 contentPreview = buildNoteContentPreview(note),
                 referenceTime = referenceTime,
                 occurredAt = occurredAt,
                 userId = note.userId,
-            )
+            ),
         )
     }
 
@@ -426,7 +438,7 @@ class NoteViewModel @Inject constructor(
         val trimmedContent = note.content.trim()
         return when {
             trimmedContent.isNotBlank() -> trimmedContent
-            note.imageUris.isNotBlank() -> "图片笔记"
+            note.imageUris.isNotBlank() -> "包含图片"
             note.title.isNotBlank() -> note.title.trim()
             else -> ""
         }
@@ -489,5 +501,3 @@ class NoteViewModel @Inject constructor(
         return cal.timeInMillis
     }
 }
-
-

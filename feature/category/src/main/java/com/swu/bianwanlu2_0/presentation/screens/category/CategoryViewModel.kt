@@ -3,50 +3,63 @@ package com.swu.bianwanlu2_0.presentation.screens.category
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.swu.bianwanlu2_0.data.local.CategorySelectionStore
+import com.swu.bianwanlu2_0.data.local.CurrentUserStore
 import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
 import com.swu.bianwanlu2_0.data.repository.CategoryRepository
-import com.swu.bianwanlu2_0.utils.GUEST_USER_ID
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CategoryViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
-    private val categorySelectionStore: CategorySelectionStore
+    private val categorySelectionStore: CategorySelectionStore,
+    private val currentUserStore: CurrentUserStore,
 ) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            categoryRepository.ensureDefaultCategory(GUEST_USER_ID, CategoryType.NOTE)
-            categoryRepository.ensureDefaultCategory(GUEST_USER_ID, CategoryType.TODO)
+            currentUserStore.currentUserId
+                .collect { userId ->
+                    categoryRepository.ensureDefaultCategory(userId, CategoryType.NOTE)
+                    categoryRepository.ensureDefaultCategory(userId, CategoryType.TODO)
+                }
         }
     }
 
-    val noteCategories: StateFlow<List<Category>> = categoryRepository
-        .getCategories(GUEST_USER_ID, CategoryType.NOTE)
+    val noteCategories: StateFlow<List<Category>> = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            categoryRepository.getCategories(userId, CategoryType.NOTE)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val todoCategories: StateFlow<List<Category>> = categoryRepository
-        .getCategories(GUEST_USER_ID, CategoryType.TODO)
+    val todoCategories: StateFlow<List<Category>> = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            categoryRepository.getCategories(userId, CategoryType.TODO)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun addCategory(name: String, type: CategoryType) {
         if (name.isBlank()) return
         viewModelScope.launch {
-            val sortOrder = categoryRepository.getNextSortOrder(GUEST_USER_ID, type)
+            val userId = currentUserStore.peekCurrentUserId()
+            val sortOrder = categoryRepository.getNextSortOrder(userId, type)
             categoryRepository.insert(
                 Category(
                     name = name.trim(),
                     type = type,
                     sortOrder = sortOrder,
-                    userId = GUEST_USER_ID
-                )
+                    userId = userId,
+                ),
             )
         }
     }
@@ -73,9 +86,9 @@ class CategoryViewModel @Inject constructor(
 
     fun deleteCategory(category: Category, fallbackCategory: Category?) {
         viewModelScope.launch {
-            val selectedCategoryId = categorySelectionStore.getSelectedCategoryId(category.type)
+            val selectedCategoryId = categorySelectionStore.getSelectedCategoryId(category.userId, category.type)
             if (selectedCategoryId == category.id) {
-                categorySelectionStore.setSelectedCategoryId(category.type, fallbackCategory?.id)
+                categorySelectionStore.setSelectedCategoryId(category.userId, category.type, fallbackCategory?.id)
             }
             categoryRepository.delete(category, fallbackCategory)
         }

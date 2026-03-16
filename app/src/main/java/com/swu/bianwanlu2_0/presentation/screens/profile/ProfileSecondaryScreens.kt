@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -94,11 +95,19 @@ fun ReminderSettingsScreen(
     val message by viewModel.message.collectAsStateWithLifecycle()
     var notificationEnabled by remember { mutableStateOf(isNotificationPermissionEnabled(context)) }
     var exactAlarmEnabled by remember { mutableStateOf(isExactAlarmPermissionEnabled(context)) }
+    var batteryOptimizationIgnored by remember { mutableStateOf(isBatteryOptimizationIgnored(context)) }
+    var lastExactAlarmEnabled by remember { mutableStateOf(exactAlarmEnabled) }
 
     val notificationSettingsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) {
         notificationEnabled = isNotificationPermissionEnabled(context)
+    }
+
+    val batteryOptimizationSettingsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) {
+        batteryOptimizationIgnored = isBatteryOptimizationIgnored(context)
     }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -129,6 +138,7 @@ fun ReminderSettingsScreen(
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 notificationEnabled = isNotificationPermissionEnabled(context)
                 exactAlarmEnabled = isExactAlarmPermissionEnabled(context)
+                batteryOptimizationIgnored = isBatteryOptimizationIgnored(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -142,6 +152,13 @@ fun ReminderSettingsScreen(
             Toast.makeText(context, toastText, Toast.LENGTH_SHORT).show()
             viewModel.consumeMessage()
         }
+    }
+
+    LaunchedEffect(exactAlarmEnabled) {
+        if (!lastExactAlarmEnabled && exactAlarmEnabled) {
+            viewModel.onExactAlarmPermissionGranted()
+        }
+        lastExactAlarmEnabled = exactAlarmEnabled
     }
 
     ProfileScaffold(
@@ -174,6 +191,18 @@ fun ReminderSettingsScreen(
             title = "????",
             value = if (exactAlarmEnabled) "???" else "???",
             onClick = onOpenExactAlarmGuide,
+        )
+        SettingActionRow(
+            title = "\u540e\u53f0\u7701\u7535\u4fdd\u62a4",
+            value = if (batteryOptimizationIgnored) "\u5df2\u5141\u8bb8" else "\u53bb\u8bbe\u7f6e",
+            onClick = {
+                if (batteryOptimizationIgnored) {
+                    Toast.makeText(context, "\u5f53\u524d\u5df2\u5141\u8bb8\u4fbf\u73a9\u5f55\u540e\u53f0\u8fd0\u884c", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "\u8bf7\u5728\u7cfb\u7edf\u7701\u7535\u7ba1\u7406\u9875\u9762\u5141\u8bb8\u4fbf\u73a9\u5f55\u540e\u53f0\u8fd0\u884c", Toast.LENGTH_LONG).show()
+                    batteryOptimizationSettingsLauncher.launch(createBatteryOptimizationSettingsIntent(context))
+                }
+            },
         )
         SettingSwitchRow(
             title = "??",
@@ -208,10 +237,13 @@ fun ReminderSettingsScreen(
 fun ExactAlarmGuideScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    viewModel: ReminderSettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val message by viewModel.message.collectAsStateWithLifecycle()
     var exactAlarmEnabled by remember { mutableStateOf(isExactAlarmPermissionEnabled(context)) }
+    var lastExactAlarmEnabled by remember { mutableStateOf(exactAlarmEnabled) }
 
     val exactAlarmSettingsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
@@ -229,6 +261,20 @@ fun ExactAlarmGuideScreen(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
+    }
+
+    LaunchedEffect(message) {
+        message?.let { toastText ->
+            Toast.makeText(context, toastText, Toast.LENGTH_SHORT).show()
+            viewModel.consumeMessage()
+        }
+    }
+
+    LaunchedEffect(exactAlarmEnabled) {
+        if (!lastExactAlarmEnabled && exactAlarmEnabled) {
+            viewModel.onExactAlarmPermissionGranted()
+        }
+        lastExactAlarmEnabled = exactAlarmEnabled
     }
 
     ProfileScaffold(
@@ -391,6 +437,7 @@ private fun ReminderSettingsHintCard() {
         ReminderSettingsHintLine(text = "????????????????????????")
         ReminderSettingsHintLine(text = "????????????????????????????")
         ReminderSettingsHintLine(text = "??????????????????????????????????")
+        ReminderSettingsHintLine(text = "\u5982\u679c\u606f\u5c4f\u6216\u9000\u5230\u540e\u53f0\u540e\u63d0\u9192\u4ecd\u4e0d\u7a33\u5b9a\uff0c\u8bf7\u540c\u65f6\u5173\u95ed\u7cfb\u7edf\u7684\u7701\u7535\u9650\u5236")
     }
 }
 
@@ -1684,6 +1731,12 @@ private fun isExactAlarmPermissionEnabled(context: Context): Boolean {
     return alarmManager.canScheduleExactAlarms()
 }
 
+private fun isBatteryOptimizationIgnored(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+    val powerManager = context.getSystemService(PowerManager::class.java) ?: return false
+    return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+}
+
 private fun createExactAlarmSettingsIntent(context: Context): Intent {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
@@ -1701,6 +1754,16 @@ private fun createNotificationSettingsIntent(context: Context): Intent {
         Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
             putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
         }
+    } else {
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+        }
+    }
+}
+
+private fun createBatteryOptimizationSettingsIntent(context: Context): Intent {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
     } else {
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", context.packageName, null)

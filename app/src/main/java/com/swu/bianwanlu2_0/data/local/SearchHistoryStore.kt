@@ -1,22 +1,37 @@
-﻿package com.swu.bianwanlu2_0.data.local
+package com.swu.bianwanlu2_0.data.local
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 
 @Singleton
 class SearchHistoryStore @Inject constructor(
     @ApplicationContext context: Context,
+    private val currentUserStore: CurrentUserStore,
 ) {
     private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    private val _history = MutableStateFlow(readHistory())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _history = MutableStateFlow(readHistory(currentUserStore.peekCurrentUserId()))
 
     val history: StateFlow<List<String>> = _history.asStateFlow()
+
+    init {
+        scope.launch {
+            currentUserStore.currentUserId.collect { userId ->
+                _history.value = readHistory(userId)
+            }
+        }
+    }
 
     fun addQuery(query: String) {
         val normalized = query.trim()
@@ -31,22 +46,28 @@ class SearchHistoryStore @Inject constructor(
             )
         }.take(MAX_HISTORY_COUNT)
 
-        persist(updatedHistory)
+        persist(currentUserStore.peekCurrentUserId(), updatedHistory)
     }
 
     fun clearHistory() {
-        persist(emptyList())
+        clearHistory(currentUserStore.peekCurrentUserId())
     }
 
-    private fun persist(history: List<String>) {
+    fun clearHistory(userId: Long) {
+        persist(userId, emptyList())
+    }
+
+    private fun persist(userId: Long, history: List<String>) {
         preferences.edit()
-            .putString(KEY_HISTORY, JSONArray(history).toString())
+            .putString(keyFor(userId), JSONArray(history).toString())
             .apply()
-        _history.value = history
+        if (userId == currentUserStore.peekCurrentUserId()) {
+            _history.value = history
+        }
     }
 
-    private fun readHistory(): List<String> {
-        val storedValue = preferences.getString(KEY_HISTORY, null).orEmpty()
+    private fun readHistory(userId: Long): List<String> {
+        val storedValue = preferences.getString(keyFor(userId), null).orEmpty()
         if (storedValue.isBlank()) return emptyList()
 
         return runCatching {
@@ -62,9 +83,11 @@ class SearchHistoryStore @Inject constructor(
         }.getOrDefault(emptyList())
     }
 
+    private fun keyFor(userId: Long): String = "${KEY_HISTORY_PREFIX}_$userId"
+
     private companion object {
         const val PREFS_NAME = "search_history"
-        const val KEY_HISTORY = "history"
+        const val KEY_HISTORY_PREFIX = "history"
         const val MAX_HISTORY_COUNT = 12
     }
 }

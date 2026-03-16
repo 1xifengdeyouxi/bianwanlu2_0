@@ -1,7 +1,8 @@
-﻿package com.swu.bianwanlu2_0.presentation.screens.search
+package com.swu.bianwanlu2_0.presentation.screens.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.swu.bianwanlu2_0.data.local.CurrentUserStore
 import com.swu.bianwanlu2_0.data.local.SearchHistoryStore
 import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.Note
@@ -11,22 +12,24 @@ import com.swu.bianwanlu2_0.data.repository.NoteRepository
 import com.swu.bianwanlu2_0.data.repository.TodoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-private const val SEARCH_GUEST_USER_ID = 1L
 private const val SEARCH_HISTORY_SAVE_DELAY = 600L
 
 enum class SearchItemType(val label: String) {
-    NOTE("笔记"),
-    TODO("待办"),
+    NOTE("??"),
+    TODO("??"),
 }
 
 data class SearchCategoryOption(
@@ -49,12 +52,14 @@ data class SearchResultItem(
     val matchScore: Int,
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     noteRepository: NoteRepository,
     todoRepository: TodoRepository,
     categoryRepository: CategoryRepository,
     private val searchHistoryStore: SearchHistoryStore,
+    currentUserStore: CurrentUserStore,
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -70,21 +75,35 @@ class SearchViewModel @Inject constructor(
 
     private var historySaveJob: Job? = null
 
-    private val allCategories = categoryRepository
-        .getAllCategories(SEARCH_GUEST_USER_ID)
+    private val allCategories = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            categoryRepository.getAllCategories(userId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val allNotes = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            noteRepository.getAllNotes(userId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val allTodos = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            todoRepository.getAllTodos(userId)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val categoryOptions: StateFlow<List<SearchCategoryOption>> = allCategories
         .combine(_selectedCategoryId) { categories, _ ->
             buildList {
-                add(SearchCategoryOption(id = null, label = "全部分类"))
+                add(SearchCategoryOption(id = null, label = "????"))
                 categories
                     .sortedWith(compareBy<Category>({ it.type.ordinal }, { it.sortOrder }, { it.id }))
                     .forEach { category ->
                         add(
                             SearchCategoryOption(
                                 id = category.id,
-                                label = "${category.type.displayLabel()} · ${category.name}",
+                                label = "${category.type.displayLabel()} ? ${category.name}",
                             ),
                         )
                     }
@@ -93,12 +112,12 @@ class SearchViewModel @Inject constructor(
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5_000),
-            listOf(SearchCategoryOption(null, "全部分类")),
+            listOf(SearchCategoryOption(null, "????")),
         )
 
     val results: StateFlow<List<SearchResultItem>> = combine(
-        noteRepository.getAllNotes(SEARCH_GUEST_USER_ID),
-        todoRepository.getAllTodos(SEARCH_GUEST_USER_ID),
+        allNotes,
+        allTodos,
         allCategories,
         _selectedCategoryId,
         _submittedQuery,
@@ -111,6 +130,17 @@ class SearchViewModel @Inject constructor(
             query = submittedQuery.trim(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        viewModelScope.launch {
+            allCategories.collect { categories ->
+                val selectedCategoryId = _selectedCategoryId.value ?: return@collect
+                if (categories.none { it.id == selectedCategoryId }) {
+                    _selectedCategoryId.value = null
+                }
+            }
+        }
+    }
 
     fun updateQuery(value: String) {
         _query.value = value
@@ -262,13 +292,13 @@ class SearchViewModel @Inject constructor(
 
     private fun buildCategoryLabel(type: SearchItemType, categoryName: String): String {
         if (categoryName.isBlank()) return type.label
-        return "${type.label} · $categoryName"
+        return "${type.label} ? $categoryName"
     }
 
     private fun com.swu.bianwanlu2_0.data.local.entity.CategoryType.displayLabel(): String {
         return when (this) {
-            com.swu.bianwanlu2_0.data.local.entity.CategoryType.NOTE -> "笔记"
-            com.swu.bianwanlu2_0.data.local.entity.CategoryType.TODO -> "待办"
+            com.swu.bianwanlu2_0.data.local.entity.CategoryType.NOTE -> "??"
+            com.swu.bianwanlu2_0.data.local.entity.CategoryType.TODO -> "??"
         }
     }
 }

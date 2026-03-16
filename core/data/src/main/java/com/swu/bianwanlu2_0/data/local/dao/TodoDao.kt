@@ -74,4 +74,7 @@ interface TodoDao {
 
     @Query("DELETE FROM todos WHERE user_id = :userId")
     suspend fun deleteAllByUser(userId: Long)
+
+    @Query("UPDATE todos SET user_id = :targetUserId WHERE user_id = :sourceUserId")
+    suspend fun reassignUser(sourceUserId: Long, targetUserId: Long)
 }

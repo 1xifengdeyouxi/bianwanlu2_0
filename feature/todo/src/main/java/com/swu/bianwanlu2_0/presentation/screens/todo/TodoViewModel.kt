@@ -1,8 +1,9 @@
-﻿package com.swu.bianwanlu2_0.presentation.screens.todo
+package com.swu.bianwanlu2_0.presentation.screens.todo
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.swu.bianwanlu2_0.data.local.CategorySelectionStore
+import com.swu.bianwanlu2_0.data.local.CurrentUserStore
 import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
 import com.swu.bianwanlu2_0.data.local.entity.TimelineActionType
@@ -14,14 +15,16 @@ import com.swu.bianwanlu2_0.data.reminder.ReminderCoordinator
 import com.swu.bianwanlu2_0.data.repository.CategoryRepository
 import com.swu.bianwanlu2_0.data.repository.TimelineEventRepository
 import com.swu.bianwanlu2_0.data.repository.TodoRepository
-import com.swu.bianwanlu2_0.utils.GUEST_USER_ID
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.Calendar
+import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -29,8 +32,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import javax.inject.Inject
 
 enum class TodoFilter(val label: String) {
     ALL("全部"),
@@ -38,7 +39,7 @@ enum class TodoFilter(val label: String) {
     EXPIRED("已过期"),
     TODAY("今天"),
     RECENT_7_DAYS("最近"),
-    HIGH_PRIORITY("高级优先")
+    HIGH_PRIORITY("高级优先"),
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -49,10 +50,13 @@ class TodoViewModel @Inject constructor(
     private val categorySelectionStore: CategorySelectionStore,
     private val timelineEventRepository: TimelineEventRepository,
     private val reminderCoordinator: ReminderCoordinator,
+    private val currentUserStore: CurrentUserStore,
 ) : ViewModel() {
 
-    val categories: StateFlow<List<Category>> = categoryRepository
-        .getCategories(GUEST_USER_ID, CategoryType.TODO)
+    val categories: StateFlow<List<Category>> = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            categoryRepository.getCategories(userId, CategoryType.TODO)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _selectedCategory = MutableStateFlow<Category?>(null)
@@ -72,20 +76,19 @@ class TodoViewModel @Inject constructor(
         selectionOverride || selectedIds.isNotEmpty()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    val todos: StateFlow<List<Todo>> = combine(_selectedCategory, _refreshVersion) { category, _ -> category }
-        .flatMapLatest { category ->
-            if (category == null) {
-                flowOf(emptyList())
-            } else {
-                todoRepository.getTodosByCategory(GUEST_USER_ID, category.id)
-            }
+    val todos: StateFlow<List<Todo>> = combine(currentUserStore.currentUserId, _selectedCategory, _refreshVersion) { userId, category, _ ->
+        userId to category
+    }.flatMapLatest { (userId, category) ->
+        if (category == null) {
+            flowOf(emptyList())
+        } else {
+            todoRepository.getTodosByCategory(userId, category.id)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val filteredTodos: StateFlow<List<Todo>> = combine(todos, _currentFilter) { list, filter ->
         applyFilter(list, filter)
-    }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val activeTodos: StateFlow<List<Todo>> = filteredTodos
         .map { list -> list.filter { it.status == TodoStatus.ACTIVE } }
@@ -99,34 +102,38 @@ class TodoViewModel @Inject constructor(
         list.filter { it.id in selectedIds }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val todoCount: StateFlow<Int> = _selectedCategory
-        .flatMapLatest { category ->
-            if (category == null) {
-                flowOf(0)
-            } else {
-                todoRepository.countTodosByCategory(GUEST_USER_ID, category.id)
-            }
+    val todoCount: StateFlow<Int> = combine(currentUserStore.currentUserId, _selectedCategory) { userId, category ->
+        userId to category
+    }.flatMapLatest { (userId, category) ->
+        if (category == null) {
+            flowOf(0)
+        } else {
+            todoRepository.countTodosByCategory(userId, category.id)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    val selectedCategoryName: StateFlow<String> = MutableStateFlow("待办").also { flow ->
-        viewModelScope.launch {
-            _selectedCategory.collect { category ->
-                flow.value = category?.name ?: "待办"
-            }
-        }
-    }
+    val selectedCategoryName: StateFlow<String> = _selectedCategory
+        .map { category -> category?.name ?: "未分类" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "未分类")
 
     init {
         viewModelScope.launch {
-            categoryRepository.ensureDefaultCategory(GUEST_USER_ID, CategoryType.TODO)
+            currentUserStore.currentUserId
+                .collect { userId ->
+                    clearSelection()
+                    _selectedCategory.value = null
+                    _refreshVersion.value += 1
+                    categoryRepository.ensureDefaultCategory(userId, CategoryType.TODO)
+                }
         }
 
         viewModelScope.launch {
-            categories.collect { categoryList ->
+            combine(currentUserStore.currentUserId, categories) { userId, categoryList ->
+                userId to categoryList
+            }.collect { (userId, categoryList) ->
                 if (categoryList.isEmpty()) return@collect
 
-                val savedCategoryId = categorySelectionStore.getSelectedCategoryId(CategoryType.TODO)
+                val savedCategoryId = categorySelectionStore.getSelectedCategoryId(userId, CategoryType.TODO)
                 val currentCategory = _selectedCategory.value
                 val matchedCategory = when {
                     currentCategory != null -> categoryList.firstOrNull { it.id == currentCategory.id }
@@ -138,7 +145,7 @@ class TodoViewModel @Inject constructor(
                     _selectedCategory.value = matchedCategory
                 }
 
-                categorySelectionStore.setSelectedCategoryId(CategoryType.TODO, matchedCategory?.id)
+                categorySelectionStore.setSelectedCategoryId(userId, CategoryType.TODO, matchedCategory?.id)
             }
         }
 
@@ -158,7 +165,11 @@ class TodoViewModel @Inject constructor(
     fun selectCategory(category: Category?) {
         clearSelection()
         _selectedCategory.value = category
-        categorySelectionStore.setSelectedCategoryId(CategoryType.TODO, category?.id)
+        categorySelectionStore.setSelectedCategoryId(
+            currentUserStore.peekCurrentUserId(),
+            CategoryType.TODO,
+            category?.id,
+        )
     }
 
     fun setFilter(filter: TodoFilter) {
@@ -281,8 +292,8 @@ class TodoViewModel @Inject constructor(
                 todoRepository.update(
                     todo.copy(
                         sortOrder = baseOrder - index,
-                        updatedAt = now
-                    )
+                        updatedAt = now,
+                    ),
                 )
             }
             _refreshVersion.value += 1
@@ -293,7 +304,7 @@ class TodoViewModel @Inject constructor(
         title: String,
         reminderTime: Long? = null,
         isPriority: Boolean = false,
-        cardColor: Long = Todo.DEFAULT_CARD_COLOR
+        cardColor: Long = Todo.DEFAULT_CARD_COLOR,
     ) {
         if (title.isBlank()) return
         viewModelScope.launch {
@@ -306,7 +317,7 @@ class TodoViewModel @Inject constructor(
                 cardColor = cardColor,
                 createdAt = now,
                 updatedAt = now,
-                userId = GUEST_USER_ID,
+                userId = currentUserStore.peekCurrentUserId(),
             )
             val todoId = todoRepository.insert(newTodo)
             val savedTodo = newTodo.copy(id = todoId)
@@ -346,7 +357,7 @@ class TodoViewModel @Inject constructor(
         title: String,
         reminderTime: Long?,
         isPriority: Boolean,
-        cardColor: Long
+        cardColor: Long,
     ) {
         if (title.isBlank()) return
         viewModelScope.launch {
@@ -396,13 +407,13 @@ class TodoViewModel @Inject constructor(
                 itemType = TimelineItemType.TODO,
                 actionType = actionType,
                 categoryId = todo.categoryId,
-                categoryName = resolveCategoryName(todo.categoryId, "待办"),
+                categoryName = resolveCategoryName(todo.categoryId, "未分类"),
                 title = todo.title.trim(),
                 contentPreview = buildTodoContentPreview(todo),
                 referenceTime = referenceTime,
                 occurredAt = occurredAt,
                 userId = todo.userId,
-            )
+            ),
         )
     }
 
@@ -470,4 +481,3 @@ class TodoViewModel @Inject constructor(
         return start to end
     }
 }
-

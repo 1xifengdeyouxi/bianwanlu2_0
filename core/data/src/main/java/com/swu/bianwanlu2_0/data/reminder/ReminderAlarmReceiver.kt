@@ -19,7 +19,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                     appContext,
                     ReminderReceiverEntryPoint::class.java,
                 )
-                entryPoint.reminderCoordinator().handleAlarmIntent(intent)
+                entryPoint.reminderCoordinator().handleReceiverIntent(intent)
             } finally {
                 pendingResult.finish()
             }

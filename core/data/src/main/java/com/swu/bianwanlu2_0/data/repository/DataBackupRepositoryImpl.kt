@@ -3,6 +3,7 @@ package com.swu.bianwanlu2_0.data.repository
 import androidx.room.withTransaction
 import com.swu.bianwanlu2_0.data.local.AppDatabase
 import com.swu.bianwanlu2_0.data.local.CategorySelectionStore
+import com.swu.bianwanlu2_0.data.local.CurrentUserStore
 import com.swu.bianwanlu2_0.data.local.dao.CategoryDao
 import com.swu.bianwanlu2_0.data.local.dao.NoteDao
 import com.swu.bianwanlu2_0.data.local.dao.TimelineEventDao
@@ -33,19 +34,20 @@ class DataBackupRepositoryImpl @Inject constructor(
     private val todoDao: TodoDao,
     private val categoryDao: CategoryDao,
     private val timelineEventDao: TimelineEventDao,
+    private val currentUserStore: CurrentUserStore,
     private val categorySelectionStore: CategorySelectionStore,
     private val reminderCoordinator: ReminderCoordinator,
 ) : DataBackupRepository {
 
     override suspend fun exportBackup(outputStream: java.io.OutputStream): BackupExportSummary =
         withContext(Dispatchers.IO) {
-            val userId = GUEST_USER_ID
+            val userId = currentUserStore.peekCurrentUserId()
             val payload = BackupPayload(
                 schemaVersion = BACKUP_SCHEMA_VERSION,
                 exportedAt = System.currentTimeMillis(),
                 sourceUserId = userId,
-                selectedNoteCategoryId = categorySelectionStore.getSelectedCategoryId(CategoryType.NOTE),
-                selectedTodoCategoryId = categorySelectionStore.getSelectedCategoryId(CategoryType.TODO),
+                selectedNoteCategoryId = categorySelectionStore.getSelectedCategoryId(userId, CategoryType.NOTE),
+                selectedTodoCategoryId = categorySelectionStore.getSelectedCategoryId(userId, CategoryType.TODO),
                 categories = categoryDao.getAllByUser(userId).first(),
                 notes = noteDao.getAllByUser(userId).first(),
                 todos = todoDao.getAllByUser(userId).first(),
@@ -67,7 +69,7 @@ class DataBackupRepositoryImpl @Inject constructor(
             val rawText = inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
                 reader.readText()
             }
-            require(rawText.isNotBlank()) { "备份文件为空" }
+            require(rawText.isNotBlank()) { "??????" }
 
             val payload = parsePayload(JSONObject(rawText))
             BackupImportPreview(
@@ -83,7 +85,7 @@ class DataBackupRepositoryImpl @Inject constructor(
 
     override suspend fun restoreBackup(payload: BackupPayload): BackupRestoreSummary =
         withContext(Dispatchers.IO) {
-            val userId = GUEST_USER_ID
+            val userId = currentUserStore.peekCurrentUserId()
             reminderCoordinator.clearAllScheduledState()
             runCatching {
                 appDatabase.withTransaction {
@@ -91,19 +93,22 @@ class DataBackupRepositoryImpl @Inject constructor(
                     noteDao.deleteAllByUser(userId)
                     todoDao.deleteAllByUser(userId)
                     categoryDao.deleteAllByUser(userId)
-                    categorySelectionStore.clearAll()
+                    categorySelectionStore.clearAll(userId)
 
                     val restoredCategories = mutableListOf<Category>()
+                    val categoryIdMap = mutableMapOf<Long, Long>()
                     payload.categories
                         .sortedWith(compareBy<Category> { it.type.ordinal }.thenBy { it.sortOrder }.thenBy { it.id })
                         .forEach { category ->
                             val safeName = category.name.ifBlank { defaultNameFor(category.type) }
                             val insertedId = categoryDao.insert(
                                 category.copy(
+                                    id = 0L,
                                     name = safeName,
                                     userId = userId,
                                 ),
                             )
+                            categoryIdMap[category.id] = insertedId
                             restoredCategories += category.copy(
                                 id = insertedId,
                                 name = safeName,
@@ -113,59 +118,86 @@ class DataBackupRepositoryImpl @Inject constructor(
 
                     val noteDefault = ensureDefaultCategory(userId, CategoryType.NOTE, restoredCategories)
                     val todoDefault = ensureDefaultCategory(userId, CategoryType.TODO, restoredCategories)
-
                     val categoriesById = restoredCategories.associateBy { it.id }
                     val noteCategoryIds = restoredCategories.filter { it.type == CategoryType.NOTE }.map { it.id }.toSet()
                     val todoCategoryIds = restoredCategories.filter { it.type == CategoryType.TODO }.map { it.id }.toSet()
 
-                    val restoredNotes = payload.notes.map { note ->
-                        val resolvedCategoryId = note.categoryId.takeIf { it in noteCategoryIds } ?: noteDefault.id
-                        note.copy(
+                    val restoredNotes = mutableListOf<Note>()
+                    val noteIdMap = mutableMapOf<Long, Long>()
+                    payload.notes.forEach { note ->
+                        val resolvedCategoryId = note.categoryId
+                            ?.let(categoryIdMap::get)
+                            ?.takeIf { it in noteCategoryIds }
+                            ?: noteDefault.id
+                        val insertNote = note.copy(
+                            id = 0L,
                             categoryId = resolvedCategoryId,
                             userId = userId,
                             title = note.title,
                             content = note.content,
                         )
-                    }
-                    if (restoredNotes.isNotEmpty()) {
-                        noteDao.insertAll(restoredNotes)
+                        val insertedId = noteDao.insert(insertNote)
+                        noteIdMap[note.id] = insertedId
+                        restoredNotes += insertNote.copy(id = insertedId)
                     }
 
-                    val restoredTodos = payload.todos.map { todo ->
-                        val resolvedCategoryId = todo.categoryId.takeIf { it in todoCategoryIds } ?: todoDefault.id
-                        todo.copy(
+                    val restoredTodos = mutableListOf<Todo>()
+                    val todoIdMap = mutableMapOf<Long, Long>()
+                    payload.todos.forEach { todo ->
+                        val resolvedCategoryId = todo.categoryId
+                            ?.let(categoryIdMap::get)
+                            ?.takeIf { it in todoCategoryIds }
+                            ?: todoDefault.id
+                        val insertTodo = todo.copy(
+                            id = 0L,
                             categoryId = resolvedCategoryId,
                             userId = userId,
                             title = todo.title,
                         )
-                    }
-                    if (restoredTodos.isNotEmpty()) {
-                        todoDao.insertAll(restoredTodos)
+                        val insertedId = todoDao.insert(insertTodo)
+                        todoIdMap[todo.id] = insertedId
+                        restoredTodos += insertTodo.copy(id = insertedId)
                     }
 
-                    val restoredTimelineEvents = payload.timelineEvents.map { event ->
+                    val restoredTimelineEvents = mutableListOf<TimelineEvent>()
+                    payload.timelineEvents.forEach { event ->
+                        val resolvedItemId = when (event.itemType) {
+                            TimelineItemType.NOTE -> noteIdMap[event.itemId]
+                            TimelineItemType.TODO -> todoIdMap[event.itemId]
+                        } ?: return@forEach
+
                         val fallbackCategory = when (event.itemType) {
                             TimelineItemType.NOTE -> noteDefault
                             TimelineItemType.TODO -> todoDefault
                         }
-                        val resolvedCategory = event.categoryId?.let(categoriesById::get) ?: fallbackCategory
-                        event.copy(
+                        val resolvedCategoryId = event.categoryId?.let(categoryIdMap::get) ?: fallbackCategory.id
+                        val resolvedCategory = categoriesById[resolvedCategoryId] ?: fallbackCategory
+                        val insertEvent = event.copy(
+                            id = 0L,
+                            itemId = resolvedItemId,
                             categoryId = resolvedCategory.id,
                             categoryName = resolvedCategory.name,
                             userId = userId,
                         )
-                    }
-                    if (restoredTimelineEvents.isNotEmpty()) {
-                        timelineEventDao.insertAll(restoredTimelineEvents)
+                        val insertedId = timelineEventDao.insert(insertEvent)
+                        restoredTimelineEvents += insertEvent.copy(id = insertedId)
                     }
 
                     categorySelectionStore.setSelectedCategoryId(
+                        userId,
                         CategoryType.NOTE,
-                        payload.selectedNoteCategoryId.takeIf { it in noteCategoryIds } ?: noteDefault.id,
+                        payload.selectedNoteCategoryId
+                            ?.let(categoryIdMap::get)
+                            ?.takeIf { it in noteCategoryIds }
+                            ?: noteDefault.id,
                     )
                     categorySelectionStore.setSelectedCategoryId(
+                        userId,
                         CategoryType.TODO,
-                        payload.selectedTodoCategoryId.takeIf { it in todoCategoryIds } ?: todoDefault.id,
+                        payload.selectedTodoCategoryId
+                            ?.let(categoryIdMap::get)
+                            ?.takeIf { it in todoCategoryIds }
+                            ?: todoDefault.id,
                     )
 
                     BackupRestoreSummary(
@@ -183,7 +215,7 @@ class DataBackupRepositoryImpl @Inject constructor(
         }
 
     override suspend fun clearAllData(): BackupClearSummary = withContext(Dispatchers.IO) {
-        val userId = GUEST_USER_ID
+        val userId = currentUserStore.peekCurrentUserId()
         val deletedCategories = categoryDao.getAllByUser(userId).first().size
         val deletedNotes = noteDao.getAllByUser(userId).first().size
         val deletedTodos = todoDao.getAllByUser(userId).first().size
@@ -196,7 +228,7 @@ class DataBackupRepositoryImpl @Inject constructor(
                 noteDao.deleteAllByUser(userId)
                 todoDao.deleteAllByUser(userId)
                 categoryDao.deleteAllByUser(userId)
-                categorySelectionStore.clearAll()
+                categorySelectionStore.clearAll(userId)
 
                 val noteCategoryId = categoryDao.insert(
                     Category(
@@ -214,8 +246,8 @@ class DataBackupRepositoryImpl @Inject constructor(
                         userId = userId,
                     ),
                 )
-                categorySelectionStore.setSelectedCategoryId(CategoryType.NOTE, noteCategoryId)
-                categorySelectionStore.setSelectedCategoryId(CategoryType.TODO, todoCategoryId)
+                categorySelectionStore.setSelectedCategoryId(userId, CategoryType.NOTE, noteCategoryId)
+                categorySelectionStore.setSelectedCategoryId(userId, CategoryType.TODO, todoCategoryId)
 
                 BackupClearSummary(
                     deletedCategoryCount = deletedCategories,
@@ -252,19 +284,19 @@ class DataBackupRepositoryImpl @Inject constructor(
     private fun buildWarnings(payload: BackupPayload): List<String> {
         val warnings = mutableListOf<String>()
         if (payload.schemaVersion > BACKUP_SCHEMA_VERSION) {
-            warnings += "该备份来自较新版本，恢复后请检查显示是否完整。"
+            warnings += "???????????????????????"
         }
         if (payload.notes.any { it.imageUris.isNotBlank() }) {
-            warnings += "备份中包含图片引用，跨设备恢复时图片可能需要重新添加。"
+            warnings += "???????????????????????????"
         }
         if (payload.categories.none { it.type == CategoryType.NOTE }) {
-            warnings += "备份中没有笔记分类，恢复时会自动补一个默认笔记分类。"
+            warnings += "??????????????????????????"
         }
         if (payload.categories.none { it.type == CategoryType.TODO }) {
-            warnings += "备份中没有待办分类，恢复时会自动补一个默认待办分类。"
+            warnings += "??????????????????????????"
         }
         if (payload.notes.isEmpty() && payload.todos.isEmpty() && payload.timelineEvents.isEmpty()) {
-            warnings += "该备份不包含笔记、待办和时间轴数据，恢复后仅保留默认分类。"
+            warnings += "?????????????????????????????"
         }
         return warnings
     }
@@ -567,8 +599,8 @@ class DataBackupRepositoryImpl @Inject constructor(
 
     private fun defaultNameFor(type: CategoryType): String {
         return when (type) {
-            CategoryType.NOTE -> "笔记"
-            CategoryType.TODO -> "待办"
+            CategoryType.NOTE -> "??"
+            CategoryType.TODO -> "??"
         }
     }
 

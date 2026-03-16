@@ -271,7 +271,7 @@ fun ProfileInfoScreen(
             title = { Text("账号注销") },
             text = {
                 Text(
-                    "确定注销本地账号吗？注销后登录凭证与个人信息会被清空，但便签与待办数据不会被删除。",
+                    "\u786e\u5b9a\u6ce8\u9500\u672c\u5730\u8d26\u53f7\u5417\uff1f\u6ce8\u9500\u540e\u8be5\u8d26\u53f7\u4e0b\u7684\u7b14\u8bb0\u3001\u5f85\u529e\u3001\u5206\u7c7b\u3001\u65f6\u95f4\u8f74\u8bb0\u5f55\u4e0e\u641c\u7d22\u5386\u53f2\u90fd\u4f1a\u88ab\u5220\u9664\uff0c\u4e14\u4e0d\u53ef\u6062\u590d\uff0c\u5e94\u7528\u4f1a\u5207\u6362\u56de\u6e38\u5ba2\u6a21\u5f0f\u3002",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
@@ -279,6 +279,7 @@ fun ProfileInfoScreen(
                 TextButton(
                     onClick = {
                         onCancelAccount()
+                        Toast.makeText(context, "\u672c\u5730\u8d26\u53f7\u5df2\u6ce8\u9500\uff0c\u5df2\u5207\u6362\u5230\u6e38\u5ba2\u6a21\u5f0f", Toast.LENGTH_SHORT).show()
                         showCancelAccountConfirm = false
                     },
                 ) {

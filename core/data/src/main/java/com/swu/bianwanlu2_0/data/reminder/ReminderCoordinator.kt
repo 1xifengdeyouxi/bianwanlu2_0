@@ -7,14 +7,19 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.swu.bianwanlu2_0.data.local.CalendarSyncStore
+import com.swu.bianwanlu2_0.data.local.CurrentUserStore
 import com.swu.bianwanlu2_0.data.local.ReminderSettingsStore
+import com.swu.bianwanlu2_0.data.local.dao.CategoryDao
 import com.swu.bianwanlu2_0.data.local.dao.NoteDao
 import com.swu.bianwanlu2_0.data.local.dao.TodoDao
 import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.data.local.entity.NoteStatus
+import com.swu.bianwanlu2_0.data.local.entity.TimelineActionType
+import com.swu.bianwanlu2_0.data.local.entity.TimelineEvent
+import com.swu.bianwanlu2_0.data.local.entity.TimelineItemType
 import com.swu.bianwanlu2_0.data.local.entity.Todo
 import com.swu.bianwanlu2_0.data.local.entity.TodoStatus
-import com.swu.bianwanlu2_0.utils.GUEST_USER_ID
+import com.swu.bianwanlu2_0.data.repository.TimelineEventRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Calendar
 import javax.inject.Inject
@@ -30,6 +35,9 @@ class ReminderCoordinator @Inject constructor(
     @ApplicationContext private val context: Context,
     private val noteDao: NoteDao,
     private val todoDao: TodoDao,
+    private val categoryDao: CategoryDao,
+    private val timelineEventRepository: TimelineEventRepository,
+    private val currentUserStore: CurrentUserStore,
     private val reminderSettingsStore: ReminderSettingsStore,
     private val calendarSyncStore: CalendarSyncStore,
     private val systemCalendarSyncHelper: SystemCalendarSyncHelper,
@@ -46,22 +54,18 @@ class ReminderCoordinator @Inject constructor(
     }
 
     suspend fun resyncAll() {
-        val notes = noteDao.getAllByUser(GUEST_USER_ID).first()
-        val todos = todoDao.getAllByUser(GUEST_USER_ID).first()
-
-        notes.forEach { syncNote(it) }
-        todos.forEach { syncTodo(it) }
-
-        cleanupOrphanedCalendarMappings(notes, todos)
+        resyncUser(currentUserStore.peekCurrentUserId())
     }
 
     suspend fun clearAllScheduledState() {
-        val notes = noteDao.getAllByUser(GUEST_USER_ID).first()
-        val todos = todoDao.getAllByUser(GUEST_USER_ID).first()
+        clearScheduledStateForUser(currentUserStore.peekCurrentUserId())
+    }
 
-        notes.forEach { cancelReminderAlarms(ReminderItemType.NOTE, it.id) }
-        todos.forEach { cancelReminderAlarms(ReminderItemType.TODO, it.id) }
-        clearAllCalendarEvents()
+    suspend fun handleCurrentUserChanged(previousUserId: Long, currentUserId: Long) {
+        if (previousUserId != currentUserId) {
+            clearScheduledStateForUser(previousUserId)
+        }
+        resyncUser(currentUserId)
     }
 
     suspend fun syncNote(note: Note) {
@@ -118,11 +122,31 @@ class ReminderCoordinator @Inject constructor(
         return CalendarSyncToggleResult.ENABLED
     }
 
-    suspend fun handleAlarmIntent(intent: Intent) {
-        val payload = parseAlarmPayload(intent) ?: return
-        when (payload.itemType) {
-            ReminderItemType.NOTE -> handleNoteAlarm(payload)
-            ReminderItemType.TODO -> handleTodoAlarm(payload)
+    suspend fun handleReceiverIntent(intent: Intent) {
+        when (intent.action) {
+            ACTION_REMINDER_ALARM -> {
+                val payload = parseAlarmPayload(intent) ?: return
+                when (payload.itemType) {
+                    ReminderItemType.NOTE -> handleNoteAlarm(payload)
+                    ReminderItemType.TODO -> handleTodoAlarm(payload)
+                }
+            }
+
+            ACTION_REMINDER_COMPLETE -> {
+                val payload = parseActionPayload(intent) ?: return
+                when (payload.itemType) {
+                    ReminderItemType.NOTE -> completeNoteFromReminder(payload.itemId)
+                    ReminderItemType.TODO -> completeTodoFromReminder(payload.itemId)
+                }
+            }
+
+            ACTION_REMINDER_SNOOZE -> {
+                val payload = parseActionPayload(intent) ?: return
+                when (payload.itemType) {
+                    ReminderItemType.NOTE -> snoozeNoteReminder(payload.itemId)
+                    ReminderItemType.TODO -> snoozeTodoReminder(payload.itemId)
+                }
+            }
         }
     }
 
@@ -160,6 +184,81 @@ class ReminderCoordinator @Inject constructor(
             reminderTime = reminderTime,
             isEarlyReminder = payload.triggerType == ReminderTriggerType.EARLY,
         )
+    }
+
+    private suspend fun completeNoteFromReminder(itemId: Long) {
+        val note = noteDao.getById(itemId).first() ?: run {
+            reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.NOTE, itemId)
+            return
+        }
+        reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.NOTE, itemId)
+        if (note.status == NoteStatus.COMPLETED) return
+
+        val now = System.currentTimeMillis()
+        val updatedNote = note.copy(
+            status = NoteStatus.COMPLETED,
+            updatedAt = now,
+        )
+        noteDao.update(updatedNote)
+        syncNote(updatedNote)
+        logNoteEvent(updatedNote, TimelineActionType.COMPLETE, now)
+    }
+
+    private suspend fun completeTodoFromReminder(itemId: Long) {
+        val todo = todoDao.getById(itemId).first() ?: run {
+            reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.TODO, itemId)
+            return
+        }
+        reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.TODO, itemId)
+        if (todo.status == TodoStatus.COMPLETED) return
+
+        val now = System.currentTimeMillis()
+        val updatedTodo = todo.copy(
+            status = TodoStatus.COMPLETED,
+            completedAt = now,
+            updatedAt = now,
+        )
+        todoDao.update(updatedTodo)
+        syncTodo(updatedTodo)
+        logTodoEvent(updatedTodo, TimelineActionType.COMPLETE, now)
+    }
+
+    private suspend fun snoozeNoteReminder(itemId: Long) {
+        val note = noteDao.getById(itemId).first() ?: run {
+            reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.NOTE, itemId)
+            return
+        }
+        reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.NOTE, itemId)
+        if (note.status != NoteStatus.ACTIVE) return
+
+        val now = System.currentTimeMillis()
+        val snoozedTime = now + SNOOZE_REMINDER_OFFSET_MS
+        val updatedNote = note.copy(
+            reminderTime = snoozedTime,
+            updatedAt = now,
+        )
+        noteDao.update(updatedNote)
+        syncNote(updatedNote)
+        logNoteEvent(updatedNote, TimelineActionType.REMINDER, now, snoozedTime)
+    }
+
+    private suspend fun snoozeTodoReminder(itemId: Long) {
+        val todo = todoDao.getById(itemId).first() ?: run {
+            reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.TODO, itemId)
+            return
+        }
+        reminderNotificationHelper.cancelReminderNotifications(ReminderItemType.TODO, itemId)
+        if (todo.status != TodoStatus.ACTIVE) return
+
+        val now = System.currentTimeMillis()
+        val snoozedTime = now + SNOOZE_REMINDER_OFFSET_MS
+        val updatedTodo = todo.copy(
+            reminderTime = snoozedTime,
+            updatedAt = now,
+        )
+        todoDao.update(updatedTodo)
+        syncTodo(updatedTodo)
+        logTodoEvent(updatedTodo, TimelineActionType.REMINDER, now, snoozedTime)
     }
 
     private suspend fun syncCalendarForNote(note: Note) {
@@ -237,6 +336,32 @@ class ReminderCoordinator @Inject constructor(
         calendarSyncStore.clearAll()
     }
 
+    private suspend fun resyncUser(userId: Long) {
+        if (userId < 0L) return
+        val notes = noteDao.getAllByUser(userId).first()
+        val todos = todoDao.getAllByUser(userId).first()
+
+        notes.forEach { syncNote(it) }
+        todos.forEach { syncTodo(it) }
+
+        cleanupOrphanedCalendarMappings(notes, todos)
+    }
+
+    private suspend fun clearScheduledStateForUser(userId: Long) {
+        if (userId < 0L) return
+        val notes = noteDao.getAllByUser(userId).first()
+        val todos = todoDao.getAllByUser(userId).first()
+
+        notes.forEach { note ->
+            cancelReminderAlarms(ReminderItemType.NOTE, note.id)
+            removeCalendarEntry(ReminderItemType.NOTE, note.id)
+        }
+        todos.forEach { todo ->
+            cancelReminderAlarms(ReminderItemType.TODO, todo.id)
+            removeCalendarEntry(ReminderItemType.TODO, todo.id)
+        }
+    }
+
     private suspend fun removeCalendarEntry(itemType: ReminderItemType, itemId: Long) {
         val eventId = calendarSyncStore.getEventId(itemType, itemId) ?: return
         if (systemCalendarSyncHelper.hasCalendarPermissions()) {
@@ -297,11 +422,25 @@ class ReminderCoordinator @Inject constructor(
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms() -> {
                     alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
                 }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+                    val showIntent = createReminderEntryPendingIntent(itemType, itemId)
+                    if (showIntent != null) {
+                        alarmManager.setAlarmClock(
+                            AlarmManager.AlarmClockInfo(triggerAtMillis, showIntent),
+                            pendingIntent,
+                        )
+                    } else {
+                        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                    }
+                }
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
-                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT -> {
+                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
                 }
                 else -> {
-                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
                 }
             }
         }.onFailure {
@@ -347,6 +486,40 @@ class ReminderCoordinator @Inject constructor(
         )
     }
 
+    private fun createReminderEntryPendingIntent(
+        itemType: ReminderItemType,
+        itemId: Long,
+    ): PendingIntent? {
+        val launchIntent = appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
+            ?.apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+            }
+            ?.let { ReminderDeepLinkContract.attach(it, itemType, itemId) }
+            ?: return null
+
+        return PendingIntent.getActivity(
+            appContext,
+            buildLaunchRequestCode(itemType, itemId),
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun parseActionPayload(intent: Intent): ActionPayload? {
+        val itemType = intent.getStringExtra(EXTRA_ITEM_TYPE)?.let {
+            runCatching { ReminderItemType.valueOf(it) }.getOrNull()
+        } ?: return null
+        val itemId = intent.getLongExtra(EXTRA_ITEM_ID, -1L).takeIf { it >= 0L } ?: return null
+        return ActionPayload(
+            itemType = itemType,
+            itemId = itemId,
+        )
+    }
+
     private fun parseAlarmPayload(intent: Intent): AlarmPayload? {
         val itemType = intent.getStringExtra(EXTRA_ITEM_TYPE)?.let {
             runCatching { ReminderItemType.valueOf(it) }.getOrNull()
@@ -374,34 +547,105 @@ class ReminderCoordinator @Inject constructor(
         return if (raw == Int.MIN_VALUE) 0 else kotlin.math.abs(raw)
     }
 
+    private fun buildLaunchRequestCode(
+        itemType: ReminderItemType,
+        itemId: Long,
+    ): Int {
+        val raw = "alarm_entry_${itemType.name}_$itemId".hashCode()
+        return if (raw == Int.MIN_VALUE) 0 else kotlin.math.abs(raw)
+    }
+
+    private suspend fun logNoteEvent(
+        note: Note,
+        actionType: TimelineActionType,
+        occurredAt: Long = System.currentTimeMillis(),
+        referenceTime: Long? = note.reminderTime,
+    ) {
+        timelineEventRepository.insert(
+            TimelineEvent(
+                itemId = note.id,
+                itemType = TimelineItemType.NOTE,
+                actionType = actionType,
+                categoryId = note.categoryId,
+                categoryName = resolveCategoryName(note.userId, note.categoryId, "\u672a\u5206\u7c7b"),
+                title = note.title.trim(),
+                contentPreview = buildNoteContentPreview(note),
+                referenceTime = referenceTime,
+                occurredAt = occurredAt,
+                userId = note.userId,
+            ),
+        )
+    }
+
+    private suspend fun logTodoEvent(
+        todo: Todo,
+        actionType: TimelineActionType,
+        occurredAt: Long = System.currentTimeMillis(),
+        referenceTime: Long? = todo.reminderTime,
+    ) {
+        timelineEventRepository.insert(
+            TimelineEvent(
+                itemId = todo.id,
+                itemType = TimelineItemType.TODO,
+                actionType = actionType,
+                categoryId = todo.categoryId,
+                categoryName = resolveCategoryName(todo.userId, todo.categoryId, "\u672a\u5206\u7c7b"),
+                title = todo.title.trim(),
+                contentPreview = buildTodoContentPreview(todo),
+                referenceTime = referenceTime,
+                occurredAt = occurredAt,
+                userId = todo.userId,
+            ),
+        )
+    }
+
+    private suspend fun resolveCategoryName(userId: Long, categoryId: Long?, fallback: String): String {
+        if (categoryId == null) return fallback
+        return categoryDao.getAllByUser(userId).first().firstOrNull { it.id == categoryId }?.name ?: fallback
+    }
+
+    private fun buildNoteContentPreview(note: Note): String {
+        val trimmedContent = note.content.trim()
+        return when {
+            trimmedContent.isNotBlank() -> trimmedContent
+            note.imageUris.isNotBlank() -> "\u5305\u542b\u56fe\u7247"
+            note.title.isNotBlank() -> note.title.trim()
+            else -> ""
+        }
+    }
+
+    private fun buildTodoContentPreview(todo: Todo): String {
+        return todo.description?.trim()?.takeIf { it.isNotBlank() } ?: todo.title.trim()
+    }
+
     private fun buildNoteDisplayTitle(note: Note): String {
         return note.title.trim().ifBlank {
             note.content.trim().takeIf { it.isNotBlank() }
-                ?: if (note.imageUris.isNotBlank()) "图片笔记" else "笔记"
+                ?: if (note.imageUris.isNotBlank()) "\u56fe\u7247\u7b14\u8bb0" else "\u7b14\u8bb0"
         }
     }
 
     private fun buildNoteDetailText(note: Note): String {
         return note.content.trim().takeIf { it.isNotBlank() }
-            ?: if (note.imageUris.isNotBlank()) "包含图片内容" else "点击打开应用查看详情"
+            ?: if (note.imageUris.isNotBlank()) "\u5305\u542b\u56fe\u7247\u5185\u5bb9" else "\u8fd9\u662f\u4e00\u6761\u7b14\u8bb0\u63d0\u9192"
     }
 
     private fun buildTodoDisplayTitle(todo: Todo): String {
         return todo.title.trim().ifBlank {
-            todo.description?.trim()?.takeIf { it.isNotBlank() } ?: "待办"
+            todo.description?.trim()?.takeIf { it.isNotBlank() } ?: "\u5f85\u529e"
         }
     }
 
     private fun buildTodoDetailText(todo: Todo): String {
         return todo.description?.trim()?.takeIf { it.isNotBlank() }
-            ?: "点击打开应用查看详情"
+            ?: "\u8fd9\u662f\u4e00\u6761\u5f85\u529e\u63d0\u9192"
     }
 
     private fun buildCalendarTitle(itemType: ReminderItemType, title: String): String {
         val prefix = if (itemType == ReminderItemType.NOTE) {
-            "[便玩录][笔记]"
+            "[\u4fbf\u73a9\u5f55][\u7b14\u8bb0]"
         } else {
-            "[便玩录][待办]"
+            "[\u4fbf\u73a9\u5f55][\u5f85\u529e]"
         }
         return "$prefix $title"
     }
@@ -409,7 +653,7 @@ class ReminderCoordinator @Inject constructor(
     private fun buildCalendarDescription(detailText: String, reminderTime: Long): String {
         return buildString {
             append(detailText)
-            append("\n提醒时间：")
+            append("\n\u63d0\u9192\u65f6\u95f4\uff1a")
             append(formatReminderTime(reminderTime))
         }
     }
@@ -434,12 +678,20 @@ class ReminderCoordinator @Inject constructor(
         val triggerType: ReminderTriggerType,
     )
 
+    private data class ActionPayload(
+        val itemType: ReminderItemType,
+        val itemId: Long,
+    )
+
     companion object {
         private const val ACTION_REMINDER_ALARM = "com.swu.bianwanlu2_0.action.REMINDER_ALARM"
+        private const val ACTION_REMINDER_COMPLETE = "com.swu.bianwanlu2_0.action.REMINDER_COMPLETE"
+        private const val ACTION_REMINDER_SNOOZE = "com.swu.bianwanlu2_0.action.REMINDER_SNOOZE"
         private const val EXTRA_ITEM_TYPE = "extra_item_type"
         private const val EXTRA_ITEM_ID = "extra_item_id"
         private const val EXTRA_SCHEDULED_REMINDER_TIME = "extra_scheduled_reminder_time"
         private const val EXTRA_TRIGGER_TYPE = "extra_trigger_type"
         private const val EARLY_REMINDER_OFFSET_MS = 15 * 60 * 1000L
+        private const val SNOOZE_REMINDER_OFFSET_MS = 10 * 60 * 1000L
     }
 }

@@ -2,6 +2,7 @@ package com.swu.bianwanlu2_0.presentation.screens.timeline
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.swu.bianwanlu2_0.data.local.CurrentUserStore
 import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.CategoryType
 import com.swu.bianwanlu2_0.data.local.entity.TimelineActionType
@@ -10,12 +11,16 @@ import com.swu.bianwanlu2_0.data.local.entity.TimelineItemType
 import com.swu.bianwanlu2_0.data.repository.CategoryRepository
 import com.swu.bianwanlu2_0.data.repository.TimelineEventRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import javax.inject.Inject
 
@@ -48,10 +53,12 @@ private data class TimelineFilterState(
     val endDate: Long?,
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MainTimelineViewModel @Inject constructor(
     timelineEventRepository: TimelineEventRepository,
     categoryRepository: CategoryRepository,
+    currentUserStore: CurrentUserStore,
 ) : ViewModel() {
 
     private val _sourceTab = MutableStateFlow(TimelineSourceTab.ALL)
@@ -69,12 +76,16 @@ class MainTimelineViewModel @Inject constructor(
     private val _endDate = MutableStateFlow<Long?>(null)
     val endDate: StateFlow<Long?> = _endDate.asStateFlow()
 
-    val categories: StateFlow<List<Category>> = categoryRepository
-        .getAllCategories(TIMELINE_USER_ID)
+    val categories: StateFlow<List<Category>> = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            categoryRepository.getAllCategories(userId)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val allEvents: StateFlow<List<TimelineEvent>> = timelineEventRepository
-        .getAllEvents(TIMELINE_USER_ID)
+    private val allEvents: StateFlow<List<TimelineEvent>> = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            timelineEventRepository.getAllEvents(userId)
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val filterState = combine(
@@ -129,6 +140,17 @@ class MainTimelineViewModel @Inject constructor(
             }
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        viewModelScope.launch {
+            categories.collect { categoryList ->
+                val selectedCategoryId = _selectedCategoryId.value ?: return@collect
+                if (categoryList.none { it.id == selectedCategoryId }) {
+                    _selectedCategoryId.value = null
+                }
+            }
+        }
+    }
 
     fun setSourceTab(tab: TimelineSourceTab) {
         _sourceTab.value = tab
@@ -212,5 +234,3 @@ class MainTimelineViewModel @Inject constructor(
         }.timeInMillis
     }
 }
-
-private const val TIMELINE_USER_ID = 1L

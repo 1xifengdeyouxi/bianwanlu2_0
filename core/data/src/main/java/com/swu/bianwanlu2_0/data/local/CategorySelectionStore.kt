@@ -8,17 +8,17 @@ import javax.inject.Singleton
 
 @Singleton
 class CategorySelectionStore @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext context: Context,
 ) {
     private val preferences = context.getSharedPreferences("category_selection", Context.MODE_PRIVATE)
 
-    fun getSelectedCategoryId(type: CategoryType): Long? {
-        val key = keyFor(type)
-        return if (preferences.contains(key)) preferences.getLong(key, -1L).takeIf { it >= 0 } else null
+    fun getSelectedCategoryId(userId: Long, type: CategoryType): Long? {
+        val key = keyFor(userId, type)
+        return if (preferences.contains(key)) preferences.getLong(key, -1L).takeIf { it >= 0L } else null
     }
 
-    fun setSelectedCategoryId(type: CategoryType, categoryId: Long?) {
-        val key = keyFor(type)
+    fun setSelectedCategoryId(userId: Long, type: CategoryType, categoryId: Long?) {
+        val key = keyFor(userId, type)
         if (categoryId == null) {
             preferences.edit().remove(key).apply()
         } else {
@@ -26,17 +26,24 @@ class CategorySelectionStore @Inject constructor(
         }
     }
 
-    fun clearAll() {
+    fun copySelections(sourceUserId: Long, targetUserId: Long) {
+        CategoryType.entries.forEach { type ->
+            setSelectedCategoryId(targetUserId, type, getSelectedCategoryId(sourceUserId, type))
+        }
+    }
+
+    fun clearAll(userId: Long) {
         preferences.edit()
-            .remove(keyFor(CategoryType.NOTE))
-            .remove(keyFor(CategoryType.TODO))
+            .remove(keyFor(userId, CategoryType.NOTE))
+            .remove(keyFor(userId, CategoryType.TODO))
             .apply()
     }
 
-    private fun keyFor(type: CategoryType): String {
-        return when (type) {
-            CategoryType.NOTE -> "selected_note_category_id"
-            CategoryType.TODO -> "selected_todo_category_id"
+    private fun keyFor(userId: Long, type: CategoryType): String {
+        val suffix = when (type) {
+            CategoryType.NOTE -> "note"
+            CategoryType.TODO -> "todo"
         }
+        return "selected_${suffix}_category_id_$userId"
     }
 }

@@ -2,6 +2,7 @@
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.swu.bianwanlu2_0.data.local.CurrentUserStore
 import com.swu.bianwanlu2_0.data.local.entity.Category
 import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.data.local.entity.NoteStatus
@@ -12,28 +13,31 @@ import com.swu.bianwanlu2_0.data.repository.NoteRepository
 import com.swu.bianwanlu2_0.data.repository.TodoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private const val CALENDAR_GUEST_USER_ID = 1L
 private const val CALENDAR_PREVIEW_REMINDER_LIMIT = 2
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
     noteRepository: NoteRepository,
     todoRepository: TodoRepository,
     categoryRepository: CategoryRepository,
+    currentUserStore: CurrentUserStore,
 ) : ViewModel() {
 
     private val _displayMonthStart = MutableStateFlow(startOfMonth(System.currentTimeMillis()))
@@ -51,10 +55,28 @@ class CalendarViewModel @Inject constructor(
         .map(::formatToolbarMonth)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), formatToolbarMonth(_displayMonthStart.value))
 
+    private val allNotes = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            noteRepository.getAllNotes(userId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val allTodos = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            todoRepository.getAllTodos(userId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val allCategories = currentUserStore.currentUserId
+        .flatMapLatest { userId ->
+            categoryRepository.getAllCategories(userId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val uiState: StateFlow<CalendarUiState> = combine(
-        noteRepository.getAllNotes(CALENDAR_GUEST_USER_ID),
-        todoRepository.getAllTodos(CALENDAR_GUEST_USER_ID),
-        categoryRepository.getAllCategories(CALENDAR_GUEST_USER_ID),
+        allNotes,
+        allTodos,
+        allCategories,
         _displayMonthStart,
         _refreshVersion,
     ) { notes, todos, categories, monthStart, _ ->
@@ -152,9 +174,9 @@ class CalendarViewModel @Inject constructor(
             toolbarTitle = formatToolbarMonth(monthStart),
             monthDescription = formatMonthDescription(monthStart),
             summaryText = if (currentMonthReminderCount == 0) {
-                "本月暂无提醒 · 左右滑动切换月份"
+                "本月暂无提醒事项"
             } else {
-                "本月 $currentMonthReminderCount 条提醒 · 左右滑动切换月份"
+                "本月有 $currentMonthReminderCount 条提醒事项"
             },
             year = displayedYear,
             month = displayedMonth,
@@ -177,7 +199,7 @@ class CalendarViewModel @Inject constructor(
                 type = CalendarReminderItemType.NOTE,
                 title = note.title.trim().takeIf { it.isNotBlank() }
                     ?: note.content.trim().takeIf { it.isNotBlank() }
-                    ?: "便签",
+                    ?: "笔记",
                 content = note.content,
                 categoryName = note.categoryId?.let(categoryNameById::get).orEmpty(),
                 reminderTime = reminderTime,
@@ -222,7 +244,7 @@ private fun buildEmptyCalendarUiState(): CalendarUiState {
         monthStartMillis = monthStart,
         toolbarTitle = formatToolbarMonth(monthStart),
         monthDescription = formatMonthDescription(monthStart),
-        summaryText = "本月暂无提醒 · 左右滑动切换月份",
+        summaryText = "本月暂无提醒事项",
         year = Calendar.getInstance().get(Calendar.YEAR),
         month = Calendar.getInstance().get(Calendar.MONTH) + 1,
         weekLabels = CALENDAR_WEEK_LABELS,
