@@ -498,7 +498,7 @@ private fun CalendarDayCell(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
         ) {
             Box(
                 modifier = Modifier
@@ -525,24 +525,19 @@ private fun CalendarDayCell(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
-            if (day.totalReminderCount > 0) {
-                CalendarReminderDots(
-                    reminderCount = day.totalReminderCount,
-                    onClick = onReminderClick,
-                )
-            }
-        }
-        day.badgeLabel?.let { label ->
-            Spacer(modifier = Modifier.height(4.dp))
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
+            day.badgeLabel?.let { label ->
                 CalendarDayBadge(
                     label = label,
                     type = day.badgeType,
                 )
             }
+        }
+        if (day.totalReminderCount > 0) {
+            Spacer(modifier = Modifier.height(6.dp))
+            CalendarReminderDots(
+                reminderCount = day.totalReminderCount,
+                onClick = onReminderClick,
+            )
         }
 
         Spacer(modifier = Modifier.height(6.dp))
@@ -589,8 +584,11 @@ private fun CalendarReminderDots(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val reminderLabel = if (reminderCount > 99) "99+\u9879" else "${reminderCount}\u9879"
     Row(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -598,15 +596,16 @@ private fun CalendarReminderDots(
                 .size(7.dp)
                 .background(MaterialTheme.colorScheme.error, CircleShape),
         )
-        if (reminderCount > 1) {
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = reminderCount.toString(),
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = reminderLabel,
+            fontSize = 9.sp,
+            color = MaterialTheme.colorScheme.error,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

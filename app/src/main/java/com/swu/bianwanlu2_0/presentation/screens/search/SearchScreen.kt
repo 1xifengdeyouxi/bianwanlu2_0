@@ -45,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -57,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.swu.bianwanlu2_0.R
 import com.swu.bianwanlu2_0.data.local.entity.Note
 import com.swu.bianwanlu2_0.data.local.entity.Todo
 import java.text.SimpleDateFormat
@@ -81,7 +83,7 @@ fun SearchScreen(
     val selectedCategoryId by viewModel.selectedCategoryId.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
     var showCategoryMenu by remember { mutableStateOf(false) }
-    val selectedCategoryLabel = categoryOptions.firstOrNull { it.id == selectedCategoryId }?.label ?: "全部分类"
+    val selectedCategoryLabel = categoryOptions.firstOrNull { it.id == selectedCategoryId }?.label ?: stringResource(R.string.search_all_categories)
 
     Column(
         modifier = modifier
@@ -104,14 +106,14 @@ fun SearchScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
-                placeholder = { Text("搜索笔记和待办") },
+                placeholder = { Text(stringResource(R.string.search_placeholder)) },
                 leadingIcon = {
-                    Icon(Icons.Outlined.Search, contentDescription = "搜索")
+                    Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.search_content_search))
                 },
                 trailingIcon = {
                     if (query.isNotBlank()) {
                         IconButton(onClick = viewModel::clearQuery) {
-                            Icon(Icons.Outlined.Close, contentDescription = "清空")
+                            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.search_content_clear))
                         }
                     }
                 },
@@ -137,10 +139,10 @@ fun SearchScreen(
         ) {
             Text(
                 text = when {
-                    query.isBlank() && searchHistory.isEmpty() -> "暂无搜索历史"
-                    query.isBlank() -> "最近搜索"
-                    results.isEmpty() -> "没有找到和“$submittedQuery”相关的结果"
-                    else -> "共找到 ${results.size} 条结果"
+                    query.isBlank() && searchHistory.isEmpty() -> stringResource(R.string.search_status_no_history)
+                    query.isBlank() -> stringResource(R.string.search_status_recent)
+                    results.isEmpty() -> stringResource(R.string.search_status_no_match, submittedQuery)
+                    else -> stringResource(R.string.search_status_result_count, results.size)
                 },
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -163,7 +165,7 @@ fun SearchScreen(
                     )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "选择分类",
+                        contentDescription = stringResource(R.string.search_content_select_category),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -210,8 +212,8 @@ fun SearchScreen(
 
             results.isEmpty() -> {
                 SearchEmptyState(
-                    title = "没有匹配结果",
-                    subtitle = "换一个关键词试试，列表会在你输入时实时更新。",
+                    title = stringResource(R.string.search_empty_no_result_title),
+                    subtitle = stringResource(R.string.search_empty_no_result_subtitle),
                 )
             }
 
@@ -253,8 +255,8 @@ private fun SearchHistorySection(
 ) {
     if (history.isEmpty()) {
         SearchEmptyState(
-            title = "暂无搜索历史",
-            subtitle = "\u8f93\u5165\u5173\u952e\u8bcd\u65f6\u4f1a\u5b9e\u65f6\u663e\u793a\u5339\u914d\u7ed3\u679c\uff0c\u5e38\u7528\u5173\u952e\u8bcd\u4f1a\u81ea\u52a8\u8bb0\u5f55\u5230\u8fd9\u91cc\u3002",
+            title = stringResource(R.string.search_empty_history_title),
+            subtitle = stringResource(R.string.search_empty_history_subtitle),
         )
         return
     }
@@ -268,13 +270,13 @@ private fun SearchHistorySection(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "历史记录",
+                    text = stringResource(R.string.search_history_title),
                     fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 TextButton(onClick = onClearHistory) {
                     Text(
-                        text = "清除历史记录",
+                        text = stringResource(R.string.search_clear_history),
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -295,7 +297,7 @@ private fun SearchHistorySection(
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Search,
-                    contentDescription = "历史记录",
+                    contentDescription = stringResource(R.string.search_history_icon_description),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp),
                 )
@@ -334,12 +336,12 @@ private fun SearchTopBar(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = "返回",
+                contentDescription = stringResource(R.string.search_back),
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
         Text(
-            text = "搜索",
+            text = stringResource(R.string.search_toolbar_title),
             modifier = Modifier.align(Alignment.Center),
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
@@ -435,7 +437,7 @@ private fun SearchResultRow(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Outlined.NotificationsNone,
-                            contentDescription = "提醒时间",
+                            contentDescription = stringResource(R.string.search_reminder_time),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(17.dp),
                         )
