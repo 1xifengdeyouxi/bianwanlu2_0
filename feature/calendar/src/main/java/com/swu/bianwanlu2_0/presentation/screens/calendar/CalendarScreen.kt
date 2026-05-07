@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -1157,7 +1158,7 @@ private fun weekdayLabel(dayOfWeek: Int): String = when (dayOfWeek) {
     else -> ""
 }
 
-@androidx.compose.ui.tooling.preview.Preview(showBackground = true, backgroundColor = 0xFFFFFFFF)
+@Preview(showBackground = true, backgroundColor = 0xFFFFFFFF)
 @Composable
 private fun CalendarScreenPreview() {
     val today = Calendar.getInstance().apply {
